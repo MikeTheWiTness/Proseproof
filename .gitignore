@@ -29,3 +29,6 @@ venv/
 .idea/
 .vscode/
 *.sublime-*
+
+# Agent 工作约定（仅本地保留，不上传）
+AGENTS.md
