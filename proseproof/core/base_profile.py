@@ -34,6 +34,7 @@ class BaseProfile:
       - get_review_prompt()    → 批注评审提示词
       - split_document()       → 文档拆分逻辑
       - proofread_one()        → 校对主流程
+      - register_middleware()  → 注册自定义中间件（v0.2.0）
       - _build_pre_hook()      → 校对前置钩子（如原文检索）
     """
 
@@ -119,6 +120,24 @@ class BaseProfile:
                          q_dir: str):
         """构建校对前置钩子。默认返回 None，子类可覆盖。"""
         return None
+
+    # ---- 中间件注册（v0.2.0） ----
+
+    def register_middleware(self) -> dict:
+        """注册自定义中间件。
+
+        返回一个 dict，key 为中间件名（对应 config.json 中
+        middleware_chain 的 name 字段），value 为实现 ProofreadMiddleware
+        协议的实例。
+
+        v0.2.0 内置中间件（pre_check、similarity）由框架自动注册，
+        此方法仅用于第三方扩展。
+
+        子类覆盖示例:
+            from my_package import CustomMiddleware
+            return {**super().register_middleware(), "custom": CustomMiddleware()}
+        """
+        return {}
 
     # ---- 零差异方法 ----
 
