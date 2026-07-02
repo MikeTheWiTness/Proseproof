@@ -1,0 +1,117 @@
+% 使用 article + xeCJK 替代 ctexart
+% ctexart 会在 \begin{document} 时尝试加载系统字体集（SimSun 等），
+% 在无系统字体或字体名不可解析的环境中导致 fontspec 失败。
+% article + xeCJK 让字体设置完全由用户控制。
+\documentclass[12pt,a4paper]{article}
+\usepackage{xeCJK}
+
+% === 字体设置（开源字体，便携免安装）===
+% 通过 .otf/.ttf 扩展名触发 kpathsea 文件查找，无需 fontconfig
+\setCJKmainfont{FandolSong-Regular.otf}[
+  BoldFont=FandolSong-Bold.otf,
+  ItalicFont=FandolKai-Regular.otf]
+\setCJKsansfont{FandolHei-Regular.otf}[
+  BoldFont=FandolHei-Bold.otf]
+\setCJKmonofont{FandolKai-Regular.otf}
+
+% === CJK 缺字回退（FandolSong 缺少的字符自动用 FandolHei 补上）===
+% 注意：AutoFallBack 需要 xeCJK 3.x+ 且字体支持 fallback 特性。
+% 若编译报 \CJKfallbackfont undefined，说明当前 xeCJK 版本/字体不支持，
+% 注释掉回退配置即可（主字体 FandolSong 已覆盖绝大多数 CJK 字符）。
+%\xeCJKsetup{AutoFallBack=true}
+%\setCJKfallbackfamilyfont{\CJKfallbackfont}{FandolHei-Regular.otf}
+
+\setmainfont{texgyretermes-regular.otf}[
+  BoldFont=texgyretermes-bold.otf,
+  ItalicFont=texgyretermes-italic.otf,
+  BoldItalicFont=texgyretermes-bolditalic.otf,
+  Ligatures=TeXOff]
+\setsansfont{texgyretermes-regular.otf}
+\setmonofont{DejaVuSans.ttf}
+
+% === 非 CJK 符号回退字体（★☆ 等特殊符号，非中文字符）===
+\newfontfamily{\fallbacksymbols}{DejaVuSans.ttf}[Scale=MatchUppercase]
+
+% === 宏包 ===
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[version=4]{mhchem}
+\usepackage{graphicx}
+\usepackage{paracol}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{tikz}
+\usepackage[normalem]{ulem}        % \sout, \uwave, \dout 等命令
+\usepackage{xeCJKfntef}      % \CJKunderdot 等命令
+
+% === 红色圈号标记（TikZ 绘制，支持任意数字）===
+\newcommand{\redcircled}[1]{%
+  \tikz[baseline=(char.base)]{%
+    \node[shape=circle,draw=red,inner sep=0.3pt,text=red,line width=0.4pt,font=\fontsize{7pt}{7pt}\selectfont] (char) {#1};%
+  }%
+}
+
+% === 左栏标记：红色文字 + 圈号上标 ===
+% 不包裹任何盒子，纯文本颜色，天然支持 CJK + 数学换行
+\newcommand{\corrmark}[2]{%
+  \textcolor{red}{#1}\textsuperscript{\textcolor{red}{\redcircled{#2}}}%
+}
+
+% === 页面设置 ===
+\geometry{
+  a4paper,
+  left=1.5cm,
+  right=1.5cm,
+  top=2cm,
+  bottom=2cm,
+  columnsep=1cm
+}
+
+% === 内部辅助：计算 paracol 列宽 ===
+\newlength{\colwidthinner}
+\newcommand{\calccolwidth}{%
+  \setlength{\colwidthinner}{\dimexpr\hsize-2\fboxsep-2\fboxrule\relax}%
+}
+
+% 右栏：修改建议框
+\newcommand{\correctionbox}[1]{%
+  \noindent\calccolwidth
+  \colorbox{blue!8}{\parbox[t]{\colwidthinner}{#1}}%
+}
+
+% === Pandoc 兼容：非标准 LaTeX 命令 ===
+\newcommand{\lt}{{<}}
+\newcommand{\gt}{{>}}
+
+% === 双删除线命令（基于 ulem 宏包的自定义命令）===
+% ulem 不提供原生双删除线，使用 \markoverwith 实现
+\makeatletter
+\newcommand{\dout}{%
+  \bgroup
+  \markoverwith{%
+    \rule[-0.8ex]{0.1pt}{2.5ex}%
+    \hskip-0.1pt
+    \rule[0.2ex]{0.1pt}{2.5ex}%
+  }%
+  \ULon
+}
+\makeatother
+
+% === 页眉页脚 ===
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{校对报告}
+\fancyhead[R]{\leftmark}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+\title{校对报告}
+\author{}
+\date{}
+\maketitle
+
+{{CONTENT}}
+
+\end{document}

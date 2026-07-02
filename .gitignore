@@ -1,0 +1,31 @@
+"""
+全局 .gitignore for Proseproof
+"""
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 运行时产物
+output/
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.xdv
+*.synctex.gz
+
+# 环境
+.env
+.venv/
+venv/
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
