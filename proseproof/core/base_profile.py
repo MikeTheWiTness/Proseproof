@@ -185,11 +185,22 @@ class BaseProfile:
             strategy = HeadingSplitStrategy()
             fragments = strategy.split(md_content, self.config)
         elif split_mode == "smart":
-            # Slice #4 实现：大纲驱动 LLM 切分
-            raise NotImplementedError(
-                "smart 模式将在 Slice #4 中实现。"
-                "当前可用：heading、deep、manual、rule、none。"
-            )
+            api_url = options.get("api_url", "")
+            api_key = options.get("api_key", "")
+            model = options.get("model", "")
+            from proseproof.shared.smart_split_v2 import SmartSplitStrategy
+
+            def _llm_call(text, prompt):
+                from proseproof.core.api_client import call_api
+                result = call_api(
+                    api_url, api_key, model,
+                    text, [], "smart分割",
+                    prompt, tools=[], max_loops=1,
+                )
+                return result["content"]
+
+            strategy = SmartSplitStrategy(llm_callable=_llm_call)
+            fragments = strategy.split(md_content, self.config)
         elif split_mode == "deep":
             api_url = options.get("api_url", "")
             api_key = options.get("api_key", "")
