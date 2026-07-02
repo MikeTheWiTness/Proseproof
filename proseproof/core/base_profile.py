@@ -155,17 +155,20 @@ class BaseProfile:
 
     def split_document(self, md_file: str, output_root: str,
                         base_name: str, options: dict = None) -> bool:
-        """文档拆分为片段 —— 支持 rule/manual/smart/none 四种模式。
+        """文档拆分为片段 —— 支持 heading/smart/deep/manual/rule/none 模式。
 
-        - rule:   按规则正则拆分
-        - manual: 按 `###### 片段开始/结束 ######` 标记拆分
-        - smart:  LLM 智能识别拆分点
-        - none:   整个文档作为一个片段
+        - heading: 按 Markdown 标题拆分（零成本）
+        - smart:   LLM 大纲驱动拆分（极低成本，Slice #4 实现）
+        - deep:    LLM 全文拆分（高成本兜底）
+        - manual:  按 `###### 片段开始/结束 ######` 标记拆分
+        - rule:    按正则拆分
+        - none:    整个文档作为一个片段
         """
         if options is None:
             options = {}
         split_mode = options.get("split_mode", "rule")
 
+        # rule 模式：无需读全文，直接委托
         if split_mode == "rule":
             return default_split_document(md_file, output_root, base_name,
                                            self.config)
@@ -177,7 +180,17 @@ class BaseProfile:
             fragments = [{"content": md_content}]
         elif split_mode == "manual":
             fragments = split_by_manual_markers(md_content)
+        elif split_mode == "heading":
+            from proseproof.shared.heading_split import HeadingSplitStrategy
+            strategy = HeadingSplitStrategy()
+            fragments = strategy.split(md_content, self.config)
         elif split_mode == "smart":
+            # Slice #4 实现：大纲驱动 LLM 切分
+            raise NotImplementedError(
+                "smart 模式将在 Slice #4 中实现。"
+                "当前可用：heading、deep、manual、rule、none。"
+            )
+        elif split_mode == "deep":
             api_url = options.get("api_url", "")
             api_key = options.get("api_key", "")
             model = options.get("model", "")

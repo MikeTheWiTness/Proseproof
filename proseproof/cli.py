@@ -122,21 +122,23 @@ def convert(input_file, output, mathjax):
 @click.argument('input_file', type=click.Path(exists=True))
 @click.option('-o', '--output-dir', default='./fragments',
               help='输出目录（默认 ./fragments）')
-@click.option('--mode', type=click.Choice(['rule', 'smart', 'manual', 'none']),
+@click.option('--mode', type=click.Choice(['heading', 'smart', 'deep', 'manual', 'rule', 'none']),
               default='rule', help='拆分模式（默认 rule）')
 @click.option('-p', '--profile', default='generic',
               help='配置方案名称或路径')
-@click.option('--api-url', default=None, help='API 地址（smart 模式需要）')
-@click.option('--api-key', default=None, help='API Key（smart 模式需要）')
-@click.option('--model', default=None, help='模型名（smart 模式需要）')
+@click.option('--api-url', default=None, help='API 地址（smart/deep 模式需要）')
+@click.option('--api-key', default=None, help='API Key（smart/deep 模式需要）')
+@click.option('--model', default=None, help='模型名（smart/deep 模式需要）')
 def split(input_file, output_dir, mode, profile, api_url, api_key, model):
     """将 Markdown 拆分为片段。
 
-    支持四种模式：
-      rule    - 按题号规则正则拆分（默认）
-      smart   - LLM 智能识别拆分点
-      manual  - 按 ###### 片段开始/结束 ###### 标记拆分
-      none    - 不拆分，整份文档作为一个片段
+    支持六种模式：
+      heading - 按 Markdown 标题切分（零 LLM 成本）
+      smart   - LLM 大纲驱动切分（极低成本，主力模式）
+      deep    - LLM 全文切分（高成本兜底）
+      manual  - 按 ###### 片段开始/结束 ###### 标记切分
+      rule    - 按正则切分（默认）
+      none    - 不切分，整份文档作为单一片段
     """
     from proseproof.core.logging_utils import log, set_log_func
     set_log_func(lambda msg: click.echo(msg))
@@ -150,7 +152,7 @@ def split(input_file, output_dir, mode, profile, api_url, api_key, model):
     os.makedirs(output_dir, exist_ok=True)
 
     options = {"split_mode": mode}
-    if mode == 'smart':
+    if mode in ('smart', 'deep'):
         options['api_url'] = api_url or os.environ.get('PROSEPROOF_API_URL', '')
         options['api_key'] = api_key or os.environ.get('PROSEPROOF_API_KEY', '')
         options['model'] = model or os.environ.get('PROSEPROOF_MODEL', '')
@@ -330,7 +332,7 @@ def compile(tex_file, output):
 @click.option('--api-key', default=None, help='API Key')
 @click.option('--model', default=None, help='模型名')
 @click.option('--react/--no-react', default=False, help='ReAct 模式')
-@click.option('--split-mode', type=click.Choice(['rule', 'smart', 'manual', 'none']),
+@click.option('--split-mode', type=click.Choice(['heading', 'smart', 'deep', 'manual', 'rule', 'none']),
               default='rule', help='拆分模式')
 @click.option('--no-pdf', is_flag=True, default=False, help='不生成 PDF')
 @click.pass_context
