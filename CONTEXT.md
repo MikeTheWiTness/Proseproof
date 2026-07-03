@@ -116,8 +116,38 @@ Proofread 阶段完成后执行的文档级全局审读。分三层：
 一组 JSON + 可选 Python 文件的组合，定义特定文档类型的校对行为。包含
 提示词模板、中间件链配置、分割策略选择、审查层级等。
 
+## 默认校对策略 (DefaultProofreadStrategy)
+
+`ProofreadStrategy` 协议的参考实现。内部执行完整的中间件链流程：
+pre 中间件（PreCheck）→ LLM 调用 → post 中间件（Similarity），
+以 `ProofreadContext` 为载体，以 `MiddlewareResult` 为返回值。
+闭合了 Strategy 层的对称性（`SplitStrategy` ↔ `ProofreadStrategy`）。
+
+## 中层校对包装 (proofread_with_middleware)
+
+位于 `default_proofread_one()` 之上的中间件链包装函数。负责构建
+`ProofreadContext`、执行中间件链、调用 LLM（仅当 `skip_llm` 为 False），
+最终返回填充好的上下文。`BaseProfile.proofread_one()` 通过此函数接入
+中间件链，而非直接调用 `default_proofread_one()`。
+
+## Deep 分割策略 (DeepSplitStrategy)
+
+升级自 v0.1.0 的 `smart_split.py`（全文 `<problem>` 标签切分），实现
+`SplitStrategy` 协议。定位为不计成本的全自动兜底策略：当 `smart` 模式
+无法可靠切分时使用。旧的 `smart_split.py` 保留但标注为 legacy。
+
 ## 逃生舱 (Escape Hatch)
 
 不暴露在一线 CLI 帮助文本中、需要用户主动指定才能使用的功能入口（如
 `--split-by-pattern`）。用于覆盖工具自动化无法处理的边缘场景，由用户
 对结果负责。
+
+## 模块职责拆分 (Module Split)
+
+v0.3.0 计划将 `defaults.py`（795 行）按职责拆分为四个模块：
+- `text_cleaning.py` — 文本清洗函数
+- `convert.py` — 文档格式转换
+- `split_utils.py` — 试卷/讲义规则拆分
+- `proofread_utils.py` — 校对主流程 + `proofread_with_middleware()`
+
+当前阶段 `defaults.py` 保持不变，待独立 ADR（ADR-0013）驱动迁移。
