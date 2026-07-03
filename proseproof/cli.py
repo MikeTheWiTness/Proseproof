@@ -32,7 +32,7 @@ def _resolve_profile(profile_name: str):
 
     # 包内置
     import proseproof.profiles
-    builtin = os.path.join(os.path.dirname(proseproof.profiles.__path__[0]),
+    builtin = os.path.join(os.path.dirname(proseproof.profiles.__file__),
                             'profiles', profile_name)
     if os.path.isdir(builtin):
         return builtin
@@ -338,29 +338,49 @@ def compile(tex_file, output):
 @click.option('--react/--no-react', default=False, help='ReAct 模式')
 @click.option('--split-mode', type=click.Choice(['heading', 'smart', 'deep', 'manual', 'rule', 'none']),
               default=None, help='拆分模式（默认从 config 读取）')
+@click.option('--middleware', default=None,
+              help='中间件链（逗号分隔，默认 pre_check,similarity）')
+@click.option('--review', type=click.Choice(['light', 'full', 'off']),
+              default=None, help='内容审查层级（默认 light）')
+@click.option('--resume', is_flag=True, default=False, help='断点续传')
+@click.option('--yes', is_flag=True, default=False, help='自动跳过确认')
 @click.option('--no-pdf', is_flag=True, default=False, help='不生成 PDF')
-@click.pass_context
-def run(ctx, input_file, output_dir, profile, api_url, api_key, model,
-        react, split_mode, no_pdf):
-    """一键完整流水线：转换 → 拆分 → 校对 → 排版 → 编译。"""
+def run(input_file, output_dir, profile, api_url, api_key, model,
+        react, split_mode, middleware, review, resume, yes, no_pdf):
+    """一键完整流水线：转换 → 拆分 → 校对 → 排版 → 编译。
+
+    支持断点续传 (--resume)、内容审查 (--review)、中间件链配置 (--middleware)。
+    """
     from proseproof.core.logging_utils import log, set_log_func
     set_log_func(lambda msg: click.echo(msg))
 
-    # 加载 profile 以获取配置默认值
+    api_url = api_url or os.environ.get('PROSEPROOF_API_URL', '')
+    api_key = api_key or os.environ.get('PROSEPROOF_API_KEY', '')
+    model = model or os.environ.get('PROSEPROOF_MODEL', '')
+
+    # 加载 profile
     profile_dir = _resolve_profile(profile)
     if not profile_dir:
         raise click.ClickException(f"配置方案不存在: {profile}")
     app = _load_profile(profile_dir)
+    if react:
+        app.react_mode = True
 
-    # split-mode 默认值：CLI 未指定时从 config 读取
+    # 解析默认值
     if split_mode is None:
         split_mode = app.config.get("split", {}).get("mode", "rule")
+    if review is None:
+        review = app.config.get("review", {}).get("content", {}).get("mode", "light")
+    if middleware is None:
+        # 从 config 读取已启用的中间件
+        mw_cfg = app.config.get("proofread", {}).get("middleware_chain", [])
+        middleware = ",".join(m["name"] for m in mw_cfg if m.get("enabled", True))
 
     os.makedirs(output_dir, exist_ok=True)
     base_name = os.path.splitext(os.path.basename(input_file))[0]
     ext = os.path.splitext(input_file)[1].lower()
 
-    # 阶段 1: 转换
+    # ── 阶段 1: 转换 ──
     if ext in ('.docx', '.doc', '.idml', '.zip'):
         md_file = os.path.join(output_dir, base_name + '.md')
         img_dir = os.path.join(output_dir, base_name + '_images')
@@ -371,27 +391,158 @@ def run(ctx, input_file, output_dir, profile, api_url, api_key, model,
         md_file = input_file
         log(f"[1/5] 跳过转换（已是 Markdown）")
 
-    # 阶段 2: 拆分
+    # ── 阶段 2: 拆分 ──
     frag_root = os.path.join(output_dir, 'fragments')
     log(f"[2/5] 拆分 (mode={split_mode}): {md_file}")
-    ctx.invoke(split, input_file=md_file, output_dir=frag_root,
-               mode=split_mode, profile=profile,
-               api_url=api_url, api_key=api_key, model=model)
-
-    # 阶段 3: 校对
-    log(f"[3/5] 校对")
+    app.split_document(md_file, frag_root, base_name, {"split_mode": split_mode})
     frag_base = os.path.join(frag_root, base_name)
-    ctx.invoke(proofread, path=frag_base, profile=profile,
-               api_url=api_url, api_key=api_key, model=model,
-               react=react, no_pdf=True)
 
-    # 阶段 4+5: 排版 + 编译
+    # ── 阶段 3: 结构审查 ──
+    if app.config.get("review", {}).get("structural", {}).get("enabled", True):
+        log(f"[3/5] 结构审查")
+        try:
+            with open(md_file, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            from proseproof.shared.outline_extractor import extract_outline, outline_to_dict
+            max_depth = app.config.get("split", {}).get("outline", {}).get("max_depth", 4)
+            outline = extract_outline(md_content, max_depth=max_depth)
+            if outline:
+                from proseproof.shared.structural_review import structural_review, has_severe_issues
+                issues = structural_review(outline_to_dict(outline))
+                if issues:
+                    log(f"   ⚠️ 发现 {len(issues)} 个结构问题")
+                    if has_severe_issues(issues) and not yes:
+                        click.echo("   ⚠️ 存在严重结构问题，建议检查后再继续。")
+                        click.echo("   使用 --yes 可跳过此确认。")
+                        if not click.confirm("   是否继续？"):
+                            raise click.ClickException("用户取消")
+        except Exception as e:
+            log(f"   ⚠️ 结构审查异常: {e}")
+
+    # ── 阶段 4: 校对（含中间件链） ──
+    log(f"[4/5] 校对（中间件: {middleware or '无'}）")
+    from proseproof.core.defaults import default_collect_paper_dirs
+    frag_dirs = default_collect_paper_dirs(frag_base)
+
+    if not frag_dirs:
+        raise click.ClickException(f"未找到已拆分的片段: {frag_base}")
+
+    # 断点续传: 加载 Manifest
+    manifest = None
+    if resume:
+        from proseproof.shared.manifest import load_manifest, create_manifest, mark_completed, mark_failed, should_skip, save_manifest
+        manifest_path = os.path.join(frag_base, ".proofread_manifest.json")
+        manifest = load_manifest(Path(manifest_path))
+        if manifest is None:
+            frag_ids = [os.path.basename(d.rstrip('/\\')) for d in frag_dirs]
+            manifest = create_manifest(frag_ids)
+        log(f"   📋 断点续传: {manifest_path}")
+
+    total = len(frag_dirs)
+    success = 0
+    for i, frag_dir in enumerate(frag_dirs):
+        frag_name = os.path.basename(frag_dir.rstrip('/\\'))
+
+        # 跳过已完成且未变更的片段
+        if resume and manifest:
+            target_md = os.path.join(frag_dir, f"{frag_name}.md")
+            if os.path.exists(target_md):
+                with open(target_md, 'r', encoding='utf-8') as fm:
+                    current_content = fm.read()
+            else:
+                current_content = ""
+            if should_skip(manifest, frag_name, current_content):
+                log(f"   ⏭️ [{i+1}/{total}] 跳过 {frag_name}（已完成）")
+                success += 1
+                continue
+
+        log(f"   [{i+1}/{total}] 校对: {frag_name}")
+        try:
+            result = app.proofread_one(
+                api_url, api_key, model, frag_dir, frag_name,
+                generate_pdf=False, source_mode="文档")
+            if result.get("success"):
+                success += 1
+                if resume and manifest:
+                    mark_completed(manifest, frag_name, current_content)
+                    save_manifest(manifest, Path(manifest_path))
+            else:
+                log(f"   ❌ {frag_name} 校对失败: {result.get('error', '未知')}")
+                if resume and manifest:
+                    mark_failed(manifest, frag_name, result.get('error', '未知'))
+                    save_manifest(manifest, Path(manifest_path))
+                # 严格停止：失败即终止
+                raise click.ClickException(f"片段 {frag_name} 校对失败，流水线终止")
+        except click.ClickException:
+            raise
+        except Exception as e:
+            log(f"   ❌ {frag_name} 异常: {e}")
+            if resume and manifest:
+                mark_failed(manifest, frag_name, str(e))
+                save_manifest(manifest, Path(manifest_path))
+            raise click.ClickException(f"片段 {frag_name} 异常: {e}")
+
+    click.echo(f"   ✅ 校对完成: {success}/{total}")
+
+    # ── 阶段 5: 内容审查 ──
+    if review != "off":
+        log(f"[5/5] 内容审查 (mode={review})")
+        try:
+            with open(md_file, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            from proseproof.shared.outline_extractor import extract_outline, outline_to_dict
+            outline = outline_to_dict(extract_outline(md_content))
+
+            # 收集所有片段的校对摘要
+            from proseproof.shared.summary_utils import extract_summary
+            summaries = {}
+            for frag_dir in frag_dirs:
+                frag_name = os.path.basename(frag_dir.rstrip('/\\'))
+                report_path = os.path.join(frag_dir, "_校对报告.md")
+                if os.path.exists(report_path):
+                    with open(report_path, 'r', encoding='utf-8') as f:
+                        summary = extract_summary(f.read())
+                    if summary:
+                        summaries[frag_name] = summary
+
+            if summaries and outline:
+                from proseproof.shared.light_review import LightReview
+                def _llm_review(prompt_text, system_prompt):
+                    from proseproof.core.api_client import call_api
+                    result = call_api(
+                        api_url, api_key, model,
+                        prompt_text, [], "内容审查",
+                        system_prompt, tools=[], max_loops=1,
+                    )
+                    return result["content"]
+
+                reviewer = LightReview(llm_callable=_llm_review)
+                report = reviewer.review(outline, summaries)
+                if report.get("issues"):
+                    log(f"   📋 发现 {len(report['issues'])} 个内容问题")
+                    report_path = os.path.join(frag_base, "_review_report.json")
+                    import json
+                    with open(report_path, 'w', encoding='utf-8') as f:
+                        json.dump(report, f, ensure_ascii=False, indent=2)
+                    log(f"   📄 审查报告: {report_path}")
+                else:
+                    log(f"   ✅ 内容审查未发现问题")
+            else:
+                log(f"   ⏭️ 跳过内容审查（无大纲或无摘要）")
+        except Exception as e:
+            log(f"   ⚠️ 内容审查异常: {e}")
+
+    # ── 排版 + 编译 ──
     if not no_pdf:
         pdf_path = os.path.join(output_dir, base_name + '.pdf')
-        log(f"[4/5] 排版 + [5/5] 编译 → {pdf_path}")
-        ctx.invoke(typeset, path=frag_base, output=pdf_path)
-    else:
-        log(f"[4/5] 跳过 PDF 生成")
+        log(f"     排版 + 编译 → {pdf_path}")
+        try:
+            from proseproof.shared.latex_generator import generate_combined_pdf
+            generate_combined_pdf(frag_base, output_dir)
+            if os.path.isfile(pdf_path):
+                click.echo(f"   ✅ {pdf_path}")
+        except Exception as e:
+            log(f"   ⚠️ PDF 编译失败: {e}")
 
     click.echo(f"\n[完成] 产物目录: {output_dir}")
 
@@ -408,7 +559,7 @@ def profile():
 def profile_list():
     """列出可用的配置方案。"""
     import proseproof.profiles
-    builtin_dir = os.path.dirname(proseproof.profiles.__path__[0])
+    builtin_dir = os.path.dirname(proseproof.profiles.__file__)
     builtin = os.path.join(builtin_dir, 'profiles')
     if os.path.isdir(builtin):
         for name in sorted(os.listdir(builtin)):
@@ -427,7 +578,7 @@ def profile_create(name, template_name):
     """从模板创建新的配置方案。"""
     import proseproof.profiles
     import shutil
-    builtin_dir = os.path.dirname(proseproof.profiles.__path__[0])
+    builtin_dir = os.path.dirname(proseproof.profiles.__file__)
     src = os.path.join(builtin_dir, 'profiles', template_name)
     if not os.path.isdir(src):
         raise click.ClickException(f"模板方案不存在: {template_name}")
