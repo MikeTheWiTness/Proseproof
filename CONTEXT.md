@@ -151,3 +151,27 @@ v0.3.0 计划将 `defaults.py`（795 行）按职责拆分为四个模块：
 - `proofread_utils.py` — 校对主流程 + `proofread_with_middleware()`
 
 当前阶段 `defaults.py` 保持不变，待独立 ADR（ADR-0013）驱动迁移。
+
+## 额外信号 (Extra Signals)
+
+v0.3.0 在 `config.json` 的 `split.outline.extra_signals` 中支持用户自定义
+分割边界信号模式（正则字符串列表）。匹配到的行作为额外的结构条目参与大纲
+构建和 Smart 分割边界决策。吸收自 `knowledge_split.py` 的核心理念。
+
+## 图像清洗 (Image Stripping)
+
+v0.3.0 在 `proseproof convert` 命令上新增 `--no-images` / `--strip-small-images`
+/ `--strip-images-below N` 三个互斥选项，用于转换时过滤装饰性图片。替代
+`decor_utils.py` 的硬编码逻辑。
+
+## 板块跳过 (Section Skipping)
+
+v0.3.0 在 `config.json` 的 `lecture_split.skip_sections` 中支持配置正则模式列表。
+拆分后，片段首行命中任一模式的目录被丢弃。替代 `split_post_utils.py` 的硬编码逻辑。
+
+## 死代码分类策略 (Dead Code Policy)
+
+审查发现约 3,200 行从未被 import 的死代码。按 ADR-0014 策略分三类处理：
+- **删除**：被新实现替代的遗留代码（`default_proofread_one` 等）
+- **Planned**：完整但未接入的功能模块（`chinese_classics_tools`、`sympy_tools` 等）
+- **吸收后删除**：核心理念保留但实现方式改为通用配置（`knowledge_split.py` 等）
