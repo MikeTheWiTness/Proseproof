@@ -302,3 +302,45 @@ class TestPreCheckMiddleware:
         result = mw.process(ctx)
         # prompt 应该被修改，追加了提示清单
         assert "⚠️" in result.context.prompt or "请特别关注" in result.context.prompt
+
+    def test_mismatched_bracket_types(self):
+        """括号类型不匹配（如 (]）应被检测。"""
+        from proseproof.shared.pre_check import PreCheckMiddleware
+
+        mw = PreCheckMiddleware()
+        ctx = make_ctx()
+        ctx.fragment_text = "打开(括号]但用了错的右括号"
+
+        result = mw.process(ctx)
+        hints = result.context.pre_check_hints
+        assert len(hints) > 0
+        assert any(h["pattern"] == "unpaired_bracket" for h in hints)
+
+    def test_pluggable_checkers(self):
+        """可仅启用部分 checker。"""
+        from proseproof.shared.pre_check import (
+            PreCheckMiddleware, _check_consecutive_punctuation,
+        )
+
+        # 仅启用标点检测
+        mw = PreCheckMiddleware(checkers=[_check_consecutive_punctuation])
+        ctx = make_ctx()
+        ctx.fragment_text = "错误。。和（不成对"
+
+        result = mw.process(ctx)
+        hints = result.context.pre_check_hints
+        # 应该只有标点检测命中，括号不成对被跳过
+        assert all(h["pattern"] == "consecutive_punctuation" for h in hints)
+        assert len(hints) == 1
+
+    def test_default_checkers_registered(self):
+        """无参数时默认注册全部内置规则。"""
+        from proseproof.shared.pre_check import PreCheckMiddleware
+
+        mw = PreCheckMiddleware()
+        assert len(mw._checkers) == 3
+        # 验证三个默认 checker 的函数名
+        names = [c.__name__ for c in mw._checkers]
+        assert "_check_unpaired_brackets" in names
+        assert "_check_consecutive_punctuation" in names
+        assert "_check_repeated_words" in names

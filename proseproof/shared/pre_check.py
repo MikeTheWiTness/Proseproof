@@ -37,10 +37,10 @@ def _check_unpaired_brackets(text: str) -> list[dict]:
     bracket_map = {
         '（': '）', '「': '」', '『': '』',
         '(': ')', '[': ']', '{': '}',
-        '"': '"', '"': '"',
+        '"': '"',
     }
     # 成对引号的特殊处理：不嵌套，计数取奇偶
-    quote_pairs = {'"', '"'}
+    quote_pairs = {'"'}
 
     for left, right in bracket_map.items():
         if left in quote_pairs:
@@ -56,7 +56,7 @@ def _check_unpaired_brackets(text: str) -> list[dict]:
                         })
                         break
         else:
-            # 普通括号：栈检测
+            # 普通括号：栈检测（验证左右括号配对类型）
             stack = []
             for i, line in enumerate(lines):
                 for ch in line:
@@ -70,7 +70,15 @@ def _check_unpaired_brackets(text: str) -> list[dict]:
                                 "text": line.strip()[:40],
                             })
                         else:
-                            stack.pop()
+                            _, stacked_ch = stack.pop()
+                            # 验证配对类型：左( 必须配 右)，不能配 右]
+                            expected_right = bracket_map.get(stacked_ch)
+                            if expected_right and ch != expected_right:
+                                hints.append({
+                                    "line": i,
+                                    "pattern": "unpaired_bracket",
+                                    "text": line.strip()[:40],
+                                })
 
             # 栈中仍有未闭合的左括号
             for line_no, ch in stack:
@@ -117,6 +125,20 @@ def _is_empty(text: str) -> bool:
 
 
 # ============================================================
+# 检测规则注册表
+# ============================================================
+
+# 内置检测规则列表，按注册顺序执行。
+# 每条规则签名：(text: str) -> list[dict]
+# 返回的每个 dict 需含 {"line": int, "pattern": str, "text": str}。
+DEFAULT_CHECKERS = [
+    _check_unpaired_brackets,
+    _check_consecutive_punctuation,
+    _check_repeated_words,
+]
+
+
+# ============================================================
 # PreCheckMiddleware
 # ============================================================
 
@@ -130,10 +152,17 @@ class PreCheckMiddleware:
     """LLM 校对前执行的异常模式标记中间件。
 
     仅标记位置和模式，不做错误判定。
+
+    Args:
+        checkers: 可选的检测规则列表。省略时使用 DEFAULT_CHECKERS（全部内置规则）。
+                  每条规则接收文本字符串，返回 hints 列表。
     """
 
     name = "pre_check"
     phase = "pre"
+
+    def __init__(self, checkers: list = None):
+        self._checkers = checkers if checkers is not None else list(DEFAULT_CHECKERS)
 
     def process(self, ctx: ProofreadContext) -> MiddlewareResult:
         text = ctx.fragment_text
@@ -144,11 +173,10 @@ class PreCheckMiddleware:
             ctx.skip_llm = True
             return MiddlewareResult(ctx, MiddlewareAction.SKIP_LLM, "空片段")
 
-        # 收集所有提示
+        # 收集所有提示（使用注册的 checker）
         all_hints = []
-        all_hints.extend(_check_unpaired_brackets(text))
-        all_hints.extend(_check_consecutive_punctuation(text))
-        all_hints.extend(_check_repeated_words(text))
+        for checker in self._checkers:
+            all_hints.extend(checker(text))
 
         ctx.pre_check_hints = all_hints
 
