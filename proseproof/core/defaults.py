@@ -1,6 +1,6 @@
 import os, re, base64, shutil
 from pathlib import Path
-from proseproof.core.parsing import save_proofread_json
+from proseproof.core.parsing import save_proofread_json, _is_no_issue
 from proseproof.core.api_client import call_api, MAX_FILE_SIZE
 from proseproof.core.logging_utils import log
 from proseproof.core.format_enforcement import _enforce_format, enforce_and_fix
@@ -539,21 +539,6 @@ def _format_tool_calls_summary(tool_calls: list) -> str:
         lines.append(f"**{i}. {tool}** — `{arg_summary[:100]}`\n\n")
         lines.append(f"> {result_preview}\n\n")
     return "".join(lines)
-
-
-def _is_no_issue(res: str) -> bool:
-    """判断 LLM 返回是否表示「无问题」。"""
-    if not res:
-        return False
-    # 去除空白和引用标记后，核心内容仅为「无问题」
-    stripped = res.strip()
-    # 纯「无问题」
-    if stripped == "无问题":
-        return True
-    # 「无问题」后跟变体（如 "无问题。"、"无问题\n\n"）
-    if stripped.startswith("无问题") and len(stripped) <= 10:
-        return True
-    return False
 
 
 def _format_usage_summary(usage: dict) -> str:

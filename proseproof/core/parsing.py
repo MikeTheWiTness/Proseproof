@@ -1,6 +1,21 @@
 import os, re, json
 
 
+def _is_no_issue(res: str) -> bool:
+    """判断 LLM 返回是否表示「无问题」。
+    
+    用于格式审查和解析流程的统一判定。
+    """
+    if not res:
+        return False
+    stripped = res.strip()
+    if stripped == "无问题":
+        return True
+    if stripped.startswith("无问题") and len(stripped) <= 10:
+        return True
+    return False
+
+
 def _circle_to_int(ch: str) -> int | None:
     code = ord(ch)
     if 0x2460 <= code <= 0x2473:

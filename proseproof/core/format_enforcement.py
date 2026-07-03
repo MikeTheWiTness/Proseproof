@@ -9,20 +9,7 @@
 import os
 import re
 from proseproof.core.logging_utils import log
-
-
-def _is_no_issue(res: str) -> bool:
-    if not res:
-        return False
-    stripped = res.strip()
-    if stripped == "无问题":
-        return True
-    if stripped.startswith("无问题") and len(stripped) <= 10:
-        return True
-    return False
-
-
-def _enforce_format(res: str):
+from proseproof.core.parsing import _is_no_issue
     if _is_no_issue(res):
         return True, ""
     issues = []
