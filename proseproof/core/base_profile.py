@@ -9,13 +9,13 @@ profile.py（可选）提供 Python 级定制逻辑。
   - 若 profile.py 存在，通过它覆盖/扩展
 """
 import re
+import os
 from pathlib import Path
 from proseproof.core.config_loader import load_config
 from proseproof.core.defaults import (
     default_generate_knowledge,
     default_collect_paper_dirs,
     default_split_document,
-    default_proofread_one,
 )
 from proseproof.core.manual_split import split_by_manual_markers
 from proseproof.core.logging_utils import log
@@ -97,9 +97,10 @@ class BaseProfile:
                        is_segment: bool = False,
                        generate_pdf: bool = True,
                        source_mode: str = "文档") -> dict:
-        """校对单个片段 —— 模板方法骨架。
+        """校对单个片段 —— 通过中间件链驱动。
 
         子类可覆盖 _build_pre_hook() 注入前置处理逻辑。
+        返回 dict（向后兼容 default_proofread_one 的调用方）。
         """
         if is_segment:
             prompt = self.get_segment_prompt()
@@ -110,12 +111,52 @@ class BaseProfile:
 
         pre_hook = self._build_pre_hook(api_url, api_key, model, q_dir)
 
-        return default_proofread_one(
-            api_url, api_key, model, q_dir, q_name, is_segment,
-            prompt, self.tools, self.get_max_tool_loops(), generate_pdf,
-            pre_hook=pre_hook,
+        # 读取片段原文
+        target_md = os.path.join(q_dir, f"{q_name}.md")
+        md_content = ""
+        if os.path.exists(target_md):
+            with open(target_md, 'r', encoding='utf-8') as fm:
+                md_content = fm.read()
+        if not md_content:
+            return {"success": False, "result": "", "error": "未找到 md 文件"}
+
+        # 前置处理 hook
+        if pre_hook:
+            try:
+                md_content = pre_hook(md_content)
+            except Exception as e:
+                log(f"   ⚠️ 前置处理异常：{e}")
+
+        # 构建 ProofreadContext
+        from proseproof.core.middleware import ProofreadContext
+        ctx = ProofreadContext(
+            fragment_text=md_content,
+            fragment_id=q_name,
+            images=[],
+            prompt=prompt,
+            tools=self.tools,
+            config=self.config,
+        )
+
+        # 通过中间件链驱动校对
+        from proseproof.core.proofread_middleware import proofread_with_middleware
+        result = proofread_with_middleware(
+            ctx=ctx,
+            api_url=api_url, api_key=api_key, model=model,
+            output_dir=q_dir,
+            generate_pdf=generate_pdf,
             react_mode=self.react_mode,
         )
+
+        # 转换为向后兼容的 dict 格式
+        if result.action == MiddlewareAction.ABORT:
+            return {"success": False, "result": "", "error": result.message,
+                    "tool_calls": ctx.tool_calls_log}
+        if "API调用失败" in ctx.raw_response:
+            return {"success": False, "result": "", "error": ctx.raw_response,
+                    "tool_calls": ctx.tool_calls_log}
+        return {"success": True, "result": ctx.raw_response,
+                "tool_calls": ctx.tool_calls_log, "error": None}
 
     def _build_pre_hook(self, api_url: str, api_key: str, model: str,
                          q_dir: str):
