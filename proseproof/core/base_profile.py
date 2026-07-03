@@ -63,31 +63,32 @@ class BaseProfile:
         self._react_mode = value
         self.tools = self.build_tools()
 
-    # ---- 子类必须实现的方法 ----
+    # ---- 子类可覆盖的方法（均有默认实现，从 config 读取） ----
 
     def build_tools(self):
-        """构建工具集。子类必须实现。"""
-        raise NotImplementedError
+        """构建工具集。默认无工具，子类可覆盖注册自定义工具。"""
+        return []
 
     def get_max_tool_loops(self) -> int:
-        """获取 ReAct 工具调用最大循环次数。"""
-        raise NotImplementedError
+        """获取 ReAct 工具调用最大循环次数。默认 0（无工具循环）。"""
+        return 0
 
     def get_tool_instructions(self) -> str:
-        """获取工具使用说明文本。"""
-        raise NotImplementedError
+        """获取工具使用说明文本。默认空字符串。"""
+        return ""
 
     def get_proofread_prompt(self) -> str:
-        """获取校对提示词。"""
-        raise NotImplementedError
+        """获取校对提示词。默认从 config.json 的 question_prompt_lines 读取。"""
+        from proseproof.core.config_loader import get_question_prompt
+        return get_question_prompt(self.config)
 
     def get_segment_prompt(self) -> str:
-        """获取段落提取提示词（知识/内容提取场景）。"""
-        raise NotImplementedError
+        """获取段落提取提示词。默认回退到校对提示词。"""
+        return self.get_proofread_prompt()
 
     def get_review_prompt(self) -> str:
-        """获取批注评审提示词。"""
-        raise NotImplementedError
+        """获取批注评审提示词。默认回退到校对提示词。"""
+        return self.get_proofread_prompt()
 
     # ---- 校对主流程（模板方法） ----
 
