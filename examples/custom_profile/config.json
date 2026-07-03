@@ -1,0 +1,58 @@
+{
+  "profile_name": "自定义方案示例",
+  "description": "在 generic 基础上自定义的校对方案",
+
+  "question_prompt_lines": [
+    "你是一位资深校对专家，请对以下文本进行全方位严格校对。",
+    "",
+    "## 校对原则",
+    "1. **字词校对**：检查错别字、多字、漏字",
+    "2. **语句校对**：检查语病、搭配不当",
+    "",
+    "## 输出格式",
+    "如果发现问题，使用内联标记格式：",
+    "### 标记原文",
+    "（原文内容，在需要修改的位置用【序号|原文|改为】标注）",
+    "",
+    "### 修改原因",
+    "1. [type|severity] 原因说明",
+    "",
+    "如果未发现问题，直接输出：无问题"
+  ],
+
+  "knowledge_prompt_lines": [
+    "你是一位资深校对专家，请对以下文本段落进行校对。"
+  ],
+
+  "review_prompt_lines": [
+    "你是一位资深校对专家，请对以下文本进行批注评审。"
+  ],
+
+  "lecture_split": {
+    "mode": "title"
+  },
+
+  "exam_split": {
+    "question_pattern": "^\\s*(\\d+)[．.、]"
+  },
+
+  "split": {
+    "mode": "smart",
+    "outline": {
+      "max_depth": 4
+    }
+  },
+
+  "proofread": {
+    "strategy": "default",
+    "middleware_chain": [
+      {"name": "pre_check", "enabled": true},
+      {"name": "similarity", "enabled": true}
+    ]
+  },
+
+  "review": {
+    "structural": {"enabled": true},
+    "content": {"mode": "light"}
+  }
+}

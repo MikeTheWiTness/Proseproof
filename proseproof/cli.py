@@ -130,7 +130,9 @@ def convert(input_file, output, mathjax):
 @click.option('--api-url', default=None, help='API 地址（smart/deep 模式需要）')
 @click.option('--api-key', default=None, help='API Key（smart/deep 模式需要）')
 @click.option('--model', default=None, help='模型名（smart/deep 模式需要）')
-def split(input_file, output_dir, mode, profile, api_url, api_key, model):
+@click.option('--split-by-pattern', default=None,
+              help='自定义正则切分（逃生舱，覆盖 --mode）')
+def split(input_file, output_dir, mode, profile, api_url, api_key, model, split_by_pattern):
     """将 Markdown 拆分为片段。
 
     支持六种模式：
@@ -157,6 +159,9 @@ def split(input_file, output_dir, mode, profile, api_url, api_key, model):
         mode = app.config.get("split", {}).get("mode", "rule")
 
     options = {"split_mode": mode}
+    if split_by_pattern:
+        options["split_mode"] = "pattern"
+        options["split_pattern"] = split_by_pattern
     if mode in ('smart', 'deep'):
         options['api_url'] = api_url or os.environ.get('PROSEPROOF_API_URL', '')
         options['api_key'] = api_key or os.environ.get('PROSEPROOF_API_KEY', '')
@@ -341,13 +346,15 @@ def compile(tex_file, output):
               default=None, help='拆分模式（默认从 config 读取）')
 @click.option('--middleware', default=None,
               help='中间件链（逗号分隔，默认 pre_check,similarity）')
-@click.option('--review', type=click.Choice(['light', 'off']),
-              default=None, help='内容审查层级（默认 light。Full 审查 planned）')
+@click.option('--review', type=click.Choice(['light', 'full', 'off']),
+              default=None, help='内容审查层级（默认 light）')
 @click.option('--resume', is_flag=True, default=False, help='断点续传')
 @click.option('--yes', is_flag=True, default=False, help='自动跳过确认')
 @click.option('--no-pdf', is_flag=True, default=False, help='不生成 PDF')
+@click.option('--split-by-pattern', default=None,
+              help='自定义正则切分（逃生舱，覆盖 --split-mode）')
 def run(input_file, output_dir, profile, api_url, api_key, model,
-        react, split_mode, middleware, review, resume, yes, no_pdf):
+        react, split_mode, middleware, review, resume, yes, no_pdf, split_by_pattern):
     """一键完整流水线：转换 → 拆分 → 校对 → 排版 → 编译。
 
     支持断点续传 (--resume)、内容审查 (--review)、中间件链配置 (--middleware)。
@@ -395,7 +402,11 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
     # ── 阶段 2: 拆分 ──
     frag_root = os.path.join(output_dir, 'fragments')
     log(f"[2/5] 拆分 (mode={split_mode}): {md_file}")
-    app.split_document(md_file, frag_root, base_name, {"split_mode": split_mode})
+    split_options = {"split_mode": split_mode}
+    if split_by_pattern:
+        split_options["split_mode"] = "pattern"
+        split_options["split_pattern"] = split_by_pattern
+    app.split_document(md_file, frag_root, base_name, split_options)
     frag_base = os.path.join(frag_root, base_name)
 
     # ── 阶段 3: 结构审查 ──
@@ -497,42 +508,60 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
             from proseproof.shared.outline_extractor import extract_outline, outline_to_dict
             outline = outline_to_dict(extract_outline(md_content))
 
-            # 收集所有片段的校对摘要
-            from proseproof.shared.summary_utils import extract_summary
-            summaries = {}
-            for frag_dir in frag_dirs:
-                frag_name = os.path.basename(frag_dir.rstrip('/\\'))
-                report_path = os.path.join(frag_dir, "_校对报告.md")
-                if os.path.exists(report_path):
-                    with open(report_path, 'r', encoding='utf-8') as f:
-                        summary = extract_summary(f.read())
-                    if summary:
-                        summaries[frag_name] = summary
+            def _llm_review(prompt_text, system_prompt):
+                from proseproof.core.api_client import call_api
+                result = call_api(
+                    api_url, api_key, model,
+                    prompt_text, [], "内容审查",
+                    system_prompt, tools=[], max_loops=1,
+                )
+                return result["content"]
 
-            if summaries and outline:
-                from proseproof.shared.light_review import LightReview
-                def _llm_review(prompt_text, system_prompt):
-                    from proseproof.core.api_client import call_api
-                    result = call_api(
-                        api_url, api_key, model,
-                        prompt_text, [], "内容审查",
-                        system_prompt, tools=[], max_loops=1,
-                    )
-                    return result["content"]
-
-                reviewer = LightReview(llm_callable=_llm_review)
-                report = reviewer.review(outline, summaries)
-                if report.get("issues"):
-                    log(f"   📋 发现 {len(report['issues'])} 个内容问题")
-                    report_path = os.path.join(frag_base, "_review_report.json")
-                    import json
-                    with open(report_path, 'w', encoding='utf-8') as f:
-                        json.dump(report, f, ensure_ascii=False, indent=2)
-                    log(f"   📄 审查报告: {report_path}")
+            if review == "full":
+                # Full 审查：大纲 + 全文原文
+                from proseproof.shared.light_review import FullReview
+                full_texts = {}
+                for frag_dir in frag_dirs:
+                    frag_name = os.path.basename(frag_dir.rstrip('/\\'))
+                    target_md = os.path.join(frag_dir, f"{frag_name}.md")
+                    if os.path.exists(target_md):
+                        with open(target_md, 'r', encoding='utf-8') as f:
+                            full_texts[frag_name] = f.read()[:4000]  # 截断避免超长
+                if full_texts and outline:
+                    reviewer = FullReview(llm_callable=_llm_review)
+                    report = reviewer.review(outline, full_texts)
                 else:
-                    log(f"   ✅ 内容审查未发现问题")
+                    log("   ⏭️ 跳过 Full 审查（无全文）")
+                    report = {"issues": []}
             else:
-                log(f"   ⏭️ 跳过内容审查（无大纲或无摘要）")
+                # Light 审查：大纲 + 校对摘要
+                from proseproof.shared.light_review import LightReview
+                from proseproof.shared.summary_utils import extract_summary
+                summaries = {}
+                for frag_dir in frag_dirs:
+                    frag_name = os.path.basename(frag_dir.rstrip('/\\'))
+                    report_path = os.path.join(frag_dir, "_校对报告.md")
+                    if os.path.exists(report_path):
+                        with open(report_path, 'r', encoding='utf-8') as f:
+                            summary = extract_summary(f.read())
+                        if summary:
+                            summaries[frag_name] = summary
+                if summaries and outline:
+                    reviewer = LightReview(llm_callable=_llm_review)
+                    report = reviewer.review(outline, summaries)
+                else:
+                    log("   ⏭️ 跳过 Light 审查（无大纲或无摘要）")
+                    report = {"issues": []}
+
+            if report.get("issues"):
+                log(f"   📋 发现 {len(report['issues'])} 个内容问题")
+                report_path = os.path.join(frag_base, "_review_report.json")
+                import json
+                with open(report_path, 'w', encoding='utf-8') as f:
+                    json.dump(report, f, ensure_ascii=False, indent=2)
+                log(f"   📄 审查报告: {report_path}")
+            else:
+                log(f"   ✅ 内容审查未发现问题")
         except Exception as e:
             log(f"   ⚠️ 内容审查异常: {e}")
 

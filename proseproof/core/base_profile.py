@@ -23,6 +23,22 @@ from proseproof.core.middleware import MiddlewareAction
 from proseproof.shared.image_utils import copy_md_images
 
 
+def _split_by_regex(content: str, pattern) -> list:
+    """按正则匹配行切分文档。每次匹配到 pattern 的行作为新片段的起点。"""
+    lines = content.split('\n')
+    fragments = []
+    current = []
+    for line in lines:
+        if pattern.search(line) and current:
+            fragments.append({"content": '\n'.join(current).strip()})
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        fragments.append({"content": '\n'.join(current).strip()})
+    return fragments if fragments else [{"content": content}]
+
+
 class BaseProfile:
     """配置方案基类。
 
@@ -223,6 +239,18 @@ class BaseProfile:
             fragments = [{"content": md_content}]
         elif split_mode == "manual":
             fragments = split_by_manual_markers(md_content)
+        elif split_mode == "pattern":
+            split_pattern = options.get("split_pattern", "")
+            if not split_pattern:
+                log("[WARN] pattern 模式未提供 split_pattern，回退到 rule")
+                return default_split_document(md_file, output_root, base_name,
+                                               self.config)
+            try:
+                compiled = re.compile(split_pattern)
+                fragments = _split_by_regex(md_content, compiled)
+            except re.error as e:
+                log(f"[ERROR] 正则无效: {e}")
+                return False
         elif split_mode == "heading":
             from proseproof.shared.heading_split import HeadingSplitStrategy
             strategy = HeadingSplitStrategy()
