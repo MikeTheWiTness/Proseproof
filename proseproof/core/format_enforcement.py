@@ -10,6 +10,9 @@ import os
 import re
 from proseproof.core.logging_utils import log
 from proseproof.core.parsing import _is_no_issue
+
+
+def _enforce_format(res: str):
     if _is_no_issue(res):
         return True, ""
     issues = []
