@@ -74,6 +74,8 @@ Split 阶段支持的策略：
 - **none**：全文作为单一片段
 - **自定义正则**：通过 `--split-by-pattern` 指定，逃生舱
 
+> **当前状态**：heading/smart/deep/manual/rule/none 六种模式已实现。`--split-by-pattern`（PRD F9）planned for v0.3.0。
+
 ## 预检 (PreCheck)
 
 LLM 校对前执行的中间件。扫描片段原文中的异常模式（括号不成对、连续重复标点、
@@ -102,6 +104,8 @@ Proofread 阶段完成后执行的文档级全局审读。分三层：
 - **Structural**（结构审查）：大纲级别，零成本
 - **Light**（A-light）：大纲 + 每片段校对摘要，中成本
 - **Full**（A-full）：大纲 + 全文原文 + 校对报告，高成本
+
+> **当前状态**：Light 审查已实现。Full 审查（PRD F19）planned for v0.3.0。
 
 产出的问题统一携带 `confidence` 字段：Light 上限 `medium`，Full 可有 `high`。
 

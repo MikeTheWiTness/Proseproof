@@ -173,31 +173,45 @@ def proofread_with_middleware(
             except ImportError:
                 pass
 
-        try:
-            result = call_api(
-                api_url, api_key, model,
-                ctx.fragment_text, images_b64,
-                ctx.fragment_id, ctx.prompt,
-                tools=ctx.tools, max_loops=20,
-                output_dir=output_dir,
-            )
-            ctx.raw_response = result["content"]
-            ctx.tool_calls_log = result.get("tool_calls_log", [])
-            ctx.reasoning = result.get("reasoning", "")
-            ctx.usage = result.get("usage", {})
-            log(f"   📥 LLM 最终返回: {ctx.raw_response[:150].replace(chr(10), ' ')}...")
-        except Exception as e:
-            log(f"   ❌ LLM 调用失败: {e}")
-            return MiddlewareResult(
-                ctx, MiddlewareAction.ABORT,
-                f"LLM 调用失败: {e}"
-            )
+    # Step 3-4: LLM 调用 + post 验证（支持最多 2 次 RECHECK）
+    max_rechecks = 2
+    for recheck_round in range(max_rechecks + 1):
+        if recheck_round > 0:
+            log(f"   🔄 [proofread] post 中间件要求重试 ({recheck_round}/{max_rechecks})")
+            ctx.reject_result = False
 
-    # Step 4: post 中间件（即使 skip_llm 也执行）
-    try:
-        ctx = run_middleware_chain(ctx, chain)
-    except FragmentAbortedError as e:
-        log(f"   🛑 [proofread] post 阶段中止: {e}")
+        # LLM 调用（如果未被 skip）
+        if not ctx.skip_llm:
+            try:
+                result = call_api(
+                    api_url, api_key, model,
+                    ctx.fragment_text, images_b64,
+                    ctx.fragment_id, ctx.prompt,
+                    tools=ctx.tools, max_loops=20,
+                    output_dir=output_dir,
+                )
+                ctx.raw_response = result["content"]
+                ctx.tool_calls_log = result.get("tool_calls_log", [])
+                ctx.reasoning = result.get("reasoning", "")
+                ctx.usage = result.get("usage", {})
+                log(f"   📥 LLM 最终返回: {ctx.raw_response[:150].replace(chr(10), ' ')}...")
+            except Exception as e:
+                log(f"   ❌ LLM 调用失败: {e}")
+                return MiddlewareResult(
+                    ctx, MiddlewareAction.ABORT,
+                    f"LLM 调用失败: {e}"
+                )
+
+        # post 中间件（即使 skip_llm 也执行）
+        try:
+            ctx = run_middleware_chain(ctx, chain)
+        except FragmentAbortedError as e:
+            log(f"   🛑 [proofread] post 阶段中止: {e}")
+            break
+
+        # post RECHECK 消费：相似度不匹配时要求重新校对
+        if not ctx.reject_result:
+            break  # post 通过，退出循环
 
     # Step 5: 格式审查 + 保存文件
     if ctx.raw_response and "API调用失败" not in ctx.raw_response:

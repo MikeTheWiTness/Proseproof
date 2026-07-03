@@ -460,7 +460,7 @@ def call_api(api_url, api_key, model, md_text, images, q_title, system_prompt,
                             messages, output_dir, q_title, initial_header, full=True)
                         messages = _compress_history(messages, len(tool_calls_log))
                         openai_tools = None
-                        payload["tools"] = None
+                        del payload["tools"]  # 移除 tools 键，与 MAX_TURNS 路径一致
                         payload["messages"] = messages
                         resp = requests.post(chat_url, json=payload, headers=headers, timeout=TIME_OUT)
                         resp.raise_for_status()

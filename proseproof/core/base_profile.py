@@ -19,6 +19,7 @@ from proseproof.core.defaults import (
 )
 from proseproof.core.manual_split import split_by_manual_markers
 from proseproof.core.logging_utils import log
+from proseproof.core.middleware import MiddlewareAction
 from proseproof.shared.image_utils import copy_md_images
 
 

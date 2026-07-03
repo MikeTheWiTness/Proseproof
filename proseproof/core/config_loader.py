@@ -55,6 +55,10 @@ def load_config(profile_dir):
     exam = new_data.get("exam_split", {})
     config["exam_question_pattern"] = exam.get("question_pattern", r"^(\d+)．")
 
+    # v0.2.0 配置段：透传（base_profile.py 通过 self.config.get 读取默认值）
+    for section in ("split", "proofread", "review"):
+        config[section] = new_data.get(section, {})
+
     _config_cache[cache_key] = config
     return config
 

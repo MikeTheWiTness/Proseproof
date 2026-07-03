@@ -48,8 +48,11 @@ def load_manifest(path: Path) -> Manifest | None:
     """从文件加载 manifest。文件不存在时返回 None。"""
     if not path.exists():
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
     return Manifest.from_dict(data)
 
 

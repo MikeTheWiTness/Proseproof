@@ -11,6 +11,7 @@
 """
 import os
 import sys
+from pathlib import Path
 import click
 
 from proseproof import __version__
@@ -32,7 +33,7 @@ def _resolve_profile(profile_name: str):
 
     # 包内置
     import proseproof.profiles
-    builtin = os.path.join(os.path.dirname(proseproof.profiles.__file__),
+    builtin = os.path.join(os.path.dirname(proseproof.profiles.__path__[0]),
                             'profiles', profile_name)
     if os.path.isdir(builtin):
         return builtin
@@ -271,7 +272,7 @@ def typeset(path, output, no_combine, title):
 
         if output is None:
             output = os.path.join(path, 'output.tex')
-        generate_tex(data_json, md_file, output, title=title)
+        generate_tex(data_json, md_file, output)
         click.echo(f"[OK] {output}")
 
         # 尝试编译 PDF
@@ -301,7 +302,7 @@ def typeset(path, output, no_combine, title):
                     compile_to_pdf(out_tex, frag_dir)
                     click.echo(f"[OK] {os.path.join(frag_dir, 'output.pdf')}")
         else:
-            generate_combined_pdf(frag_dirs, output, title=title)
+            generate_combined_pdf(frag_dirs, output)
             click.echo(f"[OK] {output}")
 
 
@@ -340,8 +341,8 @@ def compile(tex_file, output):
               default=None, help='拆分模式（默认从 config 读取）')
 @click.option('--middleware', default=None,
               help='中间件链（逗号分隔，默认 pre_check,similarity）')
-@click.option('--review', type=click.Choice(['light', 'full', 'off']),
-              default=None, help='内容审查层级（默认 light）')
+@click.option('--review', type=click.Choice(['light', 'off']),
+              default=None, help='内容审查层级（默认 light。Full 审查 planned）')
 @click.option('--resume', is_flag=True, default=False, help='断点续传')
 @click.option('--yes', is_flag=True, default=False, help='自动跳过确认')
 @click.option('--no-pdf', is_flag=True, default=False, help='不生成 PDF')
@@ -407,6 +408,9 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
             max_depth = app.config.get("split", {}).get("outline", {}).get("max_depth", 4)
             outline = extract_outline(md_content, max_depth=max_depth)
             if outline:
+                # 落盘 _outline.json 中间产物
+                from proseproof.shared.outline_extractor import save_outline_json
+                save_outline_json(md_content, Path(frag_base), max_depth=max_depth)
                 from proseproof.shared.structural_review import structural_review, has_severe_issues
                 issues = structural_review(outline_to_dict(outline))
                 if issues:
@@ -559,7 +563,7 @@ def profile():
 def profile_list():
     """列出可用的配置方案。"""
     import proseproof.profiles
-    builtin_dir = os.path.dirname(proseproof.profiles.__file__)
+    builtin_dir = os.path.dirname(proseproof.profiles.__path__[0])
     builtin = os.path.join(builtin_dir, 'profiles')
     if os.path.isdir(builtin):
         for name in sorted(os.listdir(builtin)):
@@ -578,7 +582,7 @@ def profile_create(name, template_name):
     """从模板创建新的配置方案。"""
     import proseproof.profiles
     import shutil
-    builtin_dir = os.path.dirname(proseproof.profiles.__file__)
+    builtin_dir = os.path.dirname(proseproof.profiles.__path__[0])
     src = os.path.join(builtin_dir, 'profiles', template_name)
     if not os.path.isdir(src):
         raise click.ClickException(f"模板方案不存在: {template_name}")

@@ -90,6 +90,7 @@ class SimilarityMiddleware:
 
         if mismatches:
             ctx.similarity_passed = False
+            ctx.reject_result = True  # 触发 proofread_with_middleware 的 RECHECK 循环
             detail = "; ".join(mismatches)
             log(f"   ⚠️ [similarity] 结构不匹配: {detail}")
             return MiddlewareResult(
