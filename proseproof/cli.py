@@ -123,7 +123,7 @@ def convert(input_file, output, mathjax):
 @click.option('-o', '--output-dir', default='./fragments',
               help='输出目录（默认 ./fragments）')
 @click.option('--mode', type=click.Choice(['heading', 'smart', 'deep', 'manual', 'rule', 'none']),
-              default='rule', help='拆分模式（默认 rule）')
+              default=None, help='拆分模式（默认从 config 读取，回退为 rule）')
 @click.option('-p', '--profile', default='generic',
               help='配置方案名称或路径')
 @click.option('--api-url', default=None, help='API 地址（smart/deep 模式需要）')
@@ -150,6 +150,10 @@ def split(input_file, output_dir, mode, profile, api_url, api_key, model):
     app = _load_profile(profile_dir)
     base_name = os.path.splitext(os.path.basename(input_file))[0]
     os.makedirs(output_dir, exist_ok=True)
+
+    # mode 默认值：CLI 未指定时从 config 读取，回退到 rule
+    if mode is None:
+        mode = app.config.get("split", {}).get("mode", "rule")
 
     options = {"split_mode": mode}
     if mode in ('smart', 'deep'):
@@ -333,7 +337,7 @@ def compile(tex_file, output):
 @click.option('--model', default=None, help='模型名')
 @click.option('--react/--no-react', default=False, help='ReAct 模式')
 @click.option('--split-mode', type=click.Choice(['heading', 'smart', 'deep', 'manual', 'rule', 'none']),
-              default='rule', help='拆分模式')
+              default=None, help='拆分模式（默认从 config 读取）')
 @click.option('--no-pdf', is_flag=True, default=False, help='不生成 PDF')
 @click.pass_context
 def run(ctx, input_file, output_dir, profile, api_url, api_key, model,
@@ -341,6 +345,16 @@ def run(ctx, input_file, output_dir, profile, api_url, api_key, model,
     """一键完整流水线：转换 → 拆分 → 校对 → 排版 → 编译。"""
     from proseproof.core.logging_utils import log, set_log_func
     set_log_func(lambda msg: click.echo(msg))
+
+    # 加载 profile 以获取配置默认值
+    profile_dir = _resolve_profile(profile)
+    if not profile_dir:
+        raise click.ClickException(f"配置方案不存在: {profile}")
+    app = _load_profile(profile_dir)
+
+    # split-mode 默认值：CLI 未指定时从 config 读取
+    if split_mode is None:
+        split_mode = app.config.get("split", {}).get("mode", "rule")
 
     os.makedirs(output_dir, exist_ok=True)
     base_name = os.path.splitext(os.path.basename(input_file))[0]

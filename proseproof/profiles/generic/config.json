@@ -60,5 +60,26 @@
   "exam_split": {
     "question_pattern": "^\\s*(\\d+)[．.、]",
     "answer_start": "^\\s*(【答案】|参考答案|答案：)"
+  },
+
+  "split": {
+    "mode": "smart",
+    "outline": {
+      "max_depth": 4,
+      "numbered_hints": []
+    }
+  },
+
+  "proofread": {
+    "strategy": "default",
+    "middleware_chain": [
+      {"name": "pre_check", "enabled": true},
+      {"name": "similarity", "enabled": true}
+    ]
+  },
+
+  "review": {
+    "structural": {"enabled": true},
+    "content": {"mode": "light"}
   }
 }
