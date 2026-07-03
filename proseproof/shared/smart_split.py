@@ -1,3 +1,11 @@
+"""v0.1.0 deep 分割策略（legacy）—— 全文 LLM <problem> 标签切分。
+
+升级为 DeepSplitStrategy（实现 SplitStrategy 协议），定位为不计成本的
+全自动兜底策略。当 smart 模式（大纲驱动）无法可靠切分时使用。
+
+注意: v0.2.0 新增的 SmartSplitStrategy（smart_split_v2.py）是大纲驱动
+的主力模式，本模块保留作为 deep 模式的内部实现。
+"""
 import re
 import os
 from pathlib import Path
@@ -94,3 +102,43 @@ def smart_split(md_content, api_url, api_key, model, md_file=None):
         return api_result["content"]
 
     return smart_split_with_callable(md_content, _llm_call, md_file=md_file)
+
+
+# ============================================================
+# DeepSplitStrategy —— SplitStrategy 协议实现（v0.2.0）
+# ============================================================
+
+class DeepSplitStrategy:
+    """deep 分割策略：全文 LLM <problem> 标签切分。
+
+    实现 SplitStrategy 协议。不计成本的全自动兜底策略——
+    当 smart 模式（大纲驱动）无法可靠切分时使用。
+    """
+
+    def __init__(self, api_url: str = "", api_key: str = "",
+                 model: str = "", md_file: str = None):
+        self.api_url = api_url
+        self.api_key = api_key
+        self.model = model
+        self.md_file = md_file
+
+    def split(self, content: str, config: dict) -> list[dict]:
+        """执行 deep 分割。
+
+        Args:
+            content: Markdown 文档全文。
+            config:  Profile 配置字典。
+
+        Returns:
+            片段列表，每个 dict 含 content 字段。
+        """
+        def _llm_call(text, prompt):
+            api_result = call_api(
+                self.api_url, self.api_key, self.model,
+                text, [], "deep分割",
+                prompt, tools=[], max_loops=1,
+                max_tokens=SMART_SPLIT_MAX_TOKENS,
+            )
+            return api_result["content"]
+
+        return smart_split_with_callable(content, _llm_call, md_file=self.md_file)

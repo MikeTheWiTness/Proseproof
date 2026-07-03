@@ -203,12 +203,15 @@ class BaseProfile:
             strategy = SmartSplitStrategy(llm_callable=_llm_call)
             fragments = strategy.split(md_content, self.config)
         elif split_mode == "deep":
+            from proseproof.shared.smart_split import DeepSplitStrategy
             api_url = options.get("api_url", "")
             api_key = options.get("api_key", "")
             model = options.get("model", "")
-            from proseproof.shared.smart_split import smart_split
-            fragments = smart_split(md_content, api_url, api_key, model,
-                                     md_file=md_file)
+            strategy = DeepSplitStrategy(
+                api_url=api_url, api_key=api_key, model=model,
+                md_file=md_file,
+            )
+            fragments = strategy.split(md_content, self.config)
         else:
             log(f"[WARN] 未知拆分模式: {split_mode}，回退到 rule 模式")
             return default_split_document(md_file, output_root, base_name,
