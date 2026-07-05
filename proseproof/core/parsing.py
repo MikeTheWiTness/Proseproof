@@ -254,5 +254,7 @@ def save_proofread_json(res: str, q_dir: str, tool_calls: list | None = None):
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return True
-    except Exception:
+    except Exception as e:
+        from proseproof.core.logging_utils import log
+        log(f"   ⚠️ [parsing] 校对数据保存失败: {e}")
         return False

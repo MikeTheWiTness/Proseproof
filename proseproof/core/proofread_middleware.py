@@ -236,10 +236,9 @@ def proofread_with_middleware(
                 os.makedirs(output_dir, exist_ok=True)
                 with open(md_path, "w", encoding="utf-8") as f:
                     f.write(ctx.raw_response)
-            except Exception:
-                pass
+            except Exception as e:
+                log(f"   ⚠️ [proofread] 格式审查阶段 _校对报告.md 写入失败: {e}")
             log(f"   ⚠️ 格式不合规：{format_issues}")
-            ctx.raw_response, _, _ = enforce_and_fix(
                 md_path, ctx.raw_response, api_url, api_key, model)
         elif not format_ok:
             log(f"   ⚠️ 格式不合规：{format_issues}（跳过修正）")
@@ -259,9 +258,8 @@ def proofread_with_middleware(
                     usage_text = _format_usage_summary(ctx.usage)
                     if usage_text:
                         f.write(usage_text)
-            except Exception:
-                pass
-            save_proofread_json(ctx.raw_response, output_dir, ctx.tool_calls_log)
+            except Exception as e:
+                log(f"   ⚠️ [proofread] _校对报告.md 写入失败: {e}")
 
             # 同步存档到 output/中间产物
             try:
@@ -282,8 +280,8 @@ def proofread_with_middleware(
                 src_api_log = os.path.join(output_dir, "_API对话记录.md")
                 if os.path.exists(src_api_log):
                     shutil.copy2(src_api_log, artifact_dir / "_API对话记录.md")
-            except Exception:
-                pass
+            except Exception as e:
+                log(f"   ⚠️ [proofread] 中间产物同步失败: {e}")
 
     return MiddlewareResult(ctx, MiddlewareAction.CONTINUE)
 
