@@ -17,7 +17,7 @@ from pathlib import Path
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-# ---- 模块级 API 配置（在 default_proofread_one 中注入） ----
+# ---- 模块级 API 配置（在 proofread_with_middleware 中注入） ----
 
 _api_config: dict = {}
 """存储 API 调用所需的配置：api_url, api_key, model, output_dir"""

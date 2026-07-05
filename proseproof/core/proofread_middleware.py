@@ -209,6 +209,7 @@ def proofread_with_middleware(
             except Exception as e:
                 log(f"   ⚠️ [proofread] 格式审查阶段 _校对报告.md 写入失败: {e}")
             log(f"   ⚠️ 格式不合规：{format_issues}")
+            ctx.raw_response, _, _ = enforce_and_fix(
                 md_path, ctx.raw_response, api_url, api_key, model)
         elif not format_ok:
             log(f"   ⚠️ 格式不合规：{format_issues}（跳过修正）")

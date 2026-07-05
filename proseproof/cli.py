@@ -76,6 +76,7 @@ def _strip_images_from_md(md_path: str, mode: str | None,
 
 def _load_profile(profile_dir: str):
     config_json = os.path.join(profile_dir, 'config.json')
+    profile_py = os.path.join(profile_dir, 'profile.py')
 
     if not os.path.isfile(config_json):
         raise click.ClickException(f"配置文件不存在: {config_json}")
@@ -98,7 +99,7 @@ def _load_profile(profile_dir: str):
                     issubclass(obj, BaseProfile) and
                     obj is not BaseProfile):
                 return obj(profile_dir)
-        raise click.ClickException(f"profile.py 中未找到 BaseProfile 子类")
+        # profile.py 存在但无 BaseProfile 子类 → 回退到纯 JSON 模式
 
     # 纯 JSON 模式：用默认 BaseProfile
     from proseproof.core.base_profile import BaseProfile
@@ -147,7 +148,7 @@ def convert(input_file, output, mathjax, strip_mode, strip_images_below):
     log(f"转换: {input_file} → {output}")
     result = default_convert_file_to_md(input_file, output, img_dir,
                                          use_mathjax=mathjax)
-    if result:
+    if result.get("success"):
         # 图像清洗（如果指定了 --strip-* 选项）
         if strip_mode or strip_images_below:
             _strip_images_from_md(output, strip_mode, strip_images_below)
