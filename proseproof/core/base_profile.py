@@ -45,11 +45,15 @@ def _save_outline_if_needed(content: str, output_root: str,
     """在 split 阶段保存 _outline.json 中间产物。"""
     try:
         from proseproof.shared.outline_extractor import extract_outline, save_outline_json
-        max_depth = config.get("split", {}).get("outline", {}).get("max_depth", 4)
-        outline = extract_outline(content, max_depth=max_depth)
+        outline_cfg = config.get("split", {}).get("outline", {})
+        max_depth = outline_cfg.get("max_depth", 4)
+        extra_signals = outline_cfg.get("extra_signals", [])
+        outline = extract_outline(content, max_depth=max_depth,
+                                  extra_patterns=extra_signals)
         if outline:
             target = Path(output_root) / base_name
-            save_outline_json(content, target, max_depth=max_depth)
+            save_outline_json(content, target, max_depth=max_depth,
+                              extra_patterns=extra_signals)
     except Exception as e:
         log(f"   ⚠️ 大纲保存失败: {e}")
 
@@ -135,12 +139,16 @@ class BaseProfile:
                        is_segment: bool = False,
                        generate_pdf: bool = True,
                        source_mode: str = "文档",
-                       middleware: str | None = None) -> dict:
+                       middleware: str | None = None,
+                       strategy=None) -> dict:
         """校对单个片段 —— 通过中间件链驱动。
 
         Args:
             middleware: 可选，逗号分隔的中间件名列表，覆盖 config.json。
                         None 时从 config 读取默认值。
+            strategy:   可选，ProofreadStrategy 实例。提供时使用该策略替代
+                        默认的 proofread_with_middleware 路径。
+                        子类可通过覆盖 get_proofread_strategy() 注入自定义策略。
         """
         if is_segment:
             prompt = self.get_segment_prompt()
@@ -178,16 +186,20 @@ class BaseProfile:
             config=self.config,
         )
 
-        # 通过中间件链驱动校对
-        from proseproof.core.proofread_middleware import proofread_with_middleware
-        result = proofread_with_middleware(
-            ctx=ctx,
-            api_url=api_url, api_key=api_key, model=model,
-            output_dir=q_dir,
-            generate_pdf=generate_pdf,
-            react_mode=self.react_mode,
-            middleware_override=middleware,
-        )
+        # 选择校对路径：注入的策略 > 默认中间件链
+        if strategy is not None:
+            log(f"   🔀 [proofread_one] 使用注入策略: {type(strategy).__name__}")
+            result = strategy.proofread(ctx)
+        else:
+            from proseproof.core.proofread_middleware import proofread_with_middleware
+            result = proofread_with_middleware(
+                ctx=ctx,
+                api_url=api_url, api_key=api_key, model=model,
+                output_dir=q_dir,
+                generate_pdf=generate_pdf,
+                react_mode=self.react_mode,
+                middleware_override=middleware,
+            )
 
         # 转换为向后兼容的 dict 格式
         if result.action == MiddlewareAction.ABORT:

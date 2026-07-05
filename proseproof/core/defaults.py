@@ -28,6 +28,21 @@ def _strip_search_from_prompt(prompt: str) -> str:
     return cleaned.rstrip()
 
 
+def _fix_escaped_brackets(content: str) -> str:
+    r"""将非数学内容的 \[...\] 还原为 [...]（Pandoc 转义残留）。
+
+    若方括号内包含数学符号（$、\\、^、_），则保留为显示数学模式。
+    
+    供 defaults.py 和 latex_generator.py 共用。
+    """
+    def _repl(m):
+        inner = m.group(1)
+        if re.search(r'[\$\\\^_]', inner):
+            return m.group(0)  # 数学内容，保留 \[...\]
+        return '[' + inner + ']'  # 纯文本，还原方括号
+    return re.sub(r'\\\[([^\]]*?)\\\]', _repl, content)
+
+
 def fix_latex_escapes(md_file):
     """修复 pandoc 的过度转义。
 
@@ -71,13 +86,6 @@ def fix_latex_escapes(md_file):
     content = content.replace(r'\left\[', r'\left[')
     content = content.replace(r'\right\]', r'\right]')
 
-    def _fix_escaped_brackets(content):
-        def _repl(m):
-            inner = m.group(1)
-            if re.search(r'[\$\\\^_]', inner):
-                return m.group(0)
-            return '[' + inner + ']'
-        return re.sub(r'\\\[([^\]]*?)\\\]', _repl, content)
     content = _fix_escaped_brackets(content)
 
     for esc, orig in [(r'\^', '^'), (r'\#', '#'), (r'\~', '~'), (r'\&', '&'),
@@ -551,19 +559,31 @@ def default_convert_file_to_md(file_path, output_md, img_dir, use_mathjax=False)
 
 
 def default_collect_paper_dirs(base_path):
+    """收集片段目录列表。
+
+    扫描 base_path 下的子目录，按以下规则返回：
+    - 若 base_path 直接包含 frag_* 子目录 → 返回这些 frag_* 目录的路径
+    - 若 base_path 下的某个子目录内包含 frag_* → 返回那个子目录路径
+    - 否则返回空列表
+    """
     result = []
     base = Path(base_path)
-    if not base.exists(): return result
+    if not base.exists():
+        return result
     sub_items = [x for x in base.iterdir() if x.is_dir()]
     sub_names = [x.name for x in sub_items]
+
     def _is_frag_dir(name):
         return name.startswith('frag_')
-    has_frag_dir = any(_is_frag_dir(n) for n in sub_names)
-    if has_frag_dir:
-        result.append(str(base))
-    else:
-        for d in sub_items:
-            inner = [x.name for x in d.iterdir() if x.is_dir()]
-            if any(_is_frag_dir(n) for n in inner):
-                result.append(str(d))
+
+    # 直接包含 frag_* 子目录 → 返回每个 frag_* 目录
+    direct_frags = [str(d) for d in sub_items if _is_frag_dir(d.name)]
+    if direct_frags:
+        return sorted(direct_frags)
+
+    # 间接包含：子目录内部有 frag_*
+    for d in sub_items:
+        inner = [x.name for x in d.iterdir() if x.is_dir()]
+        if any(_is_frag_dir(n) for n in inner):
+            result.append(str(d))
     return result

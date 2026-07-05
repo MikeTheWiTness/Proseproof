@@ -229,7 +229,9 @@ def split(input_file, output_dir, mode, profile, api_url, api_key, model, split_
               help='不生成 PDF（仅出校对报告）')
 @click.option('--source-mode', type=click.Choice(['文档', '批注评审']),
               default='文档', help='校对来源模式')
-def proofread(path, profile, api_url, api_key, model, react, no_pdf, source_mode):
+@click.option('--middleware', default=None,
+              help='中间件链（逗号分隔，默认从 config 读取）')
+def proofread(path, profile, api_url, api_key, model, react, no_pdf, source_mode, middleware):
     """校对文稿片段（单片段或批量）。
 
     PATH 为单个片段目录时校对该片段；
@@ -260,7 +262,8 @@ def proofread(path, profile, api_url, api_key, model, react, no_pdf, source_mode
         generate_pdf = not no_pdf
         result = app.proofread_one(api_url, api_key, model, path, frag_name,
                                      generate_pdf=generate_pdf,
-                                     source_mode=source_mode)
+                                     source_mode=source_mode,
+                                     middleware=middleware)
         if result.get('success'):
             click.echo(f"[OK] 校对完成 → {path}")
         else:
@@ -276,7 +279,8 @@ def proofread(path, profile, api_url, api_key, model, react, no_pdf, source_mode
             result = app.proofread_one(api_url, api_key, model, frag_dir,
                                          frag_name,
                                          generate_pdf=not no_pdf,
-                                         source_mode=source_mode)
+                                         source_mode=source_mode,
+                                         middleware=middleware)
             if result.get('success'):
                 success += 1
         click.echo(f"[OK] 批量校对完成: {success}/{total}")
@@ -446,6 +450,10 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
     if split_by_pattern:
         split_options["split_mode"] = "pattern"
         split_options["split_pattern"] = split_by_pattern
+    if split_mode in ('smart', 'deep'):
+        split_options['api_url'] = api_url
+        split_options['api_key'] = api_key
+        split_options['model'] = model
     app.split_document(md_file, frag_root, base_name, split_options)
     frag_base = os.path.join(frag_root, base_name)
 
@@ -462,7 +470,8 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
             if outline:
                 # 落盘 _outline.json 中间产物
                 from proseproof.shared.outline_extractor import save_outline_json
-                save_outline_json(md_content, Path(frag_base), max_depth=max_depth)
+                save_outline_json(md_content, Path(frag_base),
+                                  max_depth=max_depth, extra_patterns=extra_signals)
                 from proseproof.shared.structural_review import structural_review, has_severe_issues
                 issues = structural_review(outline_to_dict(outline))
                 if issues:

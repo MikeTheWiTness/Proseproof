@@ -214,25 +214,37 @@ def proofread_with_middleware(
         elif not format_ok:
             log(f"   ⚠️ 格式不合规：{format_issues}（跳过修正）")
 
-        if generate_pdf:
-            md_path = os.path.join(output_dir, "_校对报告.md")
-            try:
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write("> 完整 API 对话记录请见 `_API对话记录.md`\n\n---\n\n")
-                    f.write(ctx.raw_response)
-                    if ctx.tool_calls_log:
-                        f.write(format_tool_calls_summary(ctx.tool_calls_log))
-                    if _is_no_issue(ctx.raw_response) and ctx.reasoning:
-                        f.write("\n\n---\n")
-                        f.write("## 📋 模型思考过程（仅核查用，不出现在 PDF 中）\n\n")
-                        f.write(ctx.reasoning)
-                    usage_text = format_usage_summary(ctx.usage)
-                    if usage_text:
-                        f.write(usage_text)
-            except Exception as e:
-                log(f"   ⚠️ [proofread] _校对报告.md 写入失败: {e}")
+        # 保存 _校对报告.md（核心中间产物，始终产出）
+        md_path = os.path.join(output_dir, "_校对报告.md")
+        try:
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write("> 完整 API 对话记录请见 `_API对话记录.md`\n\n---\n\n")
+                f.write(ctx.raw_response)
+                if ctx.tool_calls_log:
+                    f.write(format_tool_calls_summary(ctx.tool_calls_log))
+                if _is_no_issue(ctx.raw_response) and ctx.reasoning:
+                    f.write("\n\n---\n")
+                    f.write("## 📋 模型思考过程（仅核查用，不出现在 PDF 中）\n\n")
+                    f.write(ctx.reasoning)
+                usage_text = format_usage_summary(ctx.usage)
+                if usage_text:
+                    f.write(usage_text)
+        except Exception as e:
+            log(f"   ⚠️ [proofread] _校对报告.md 写入失败: {e}")
 
-            # 同步存档到 output/中间产物
+        # 保存校对数据 JSON（核心中间产物，始终产出）
+        try:
+            saved = save_proofread_json(ctx.raw_response, output_dir,
+                                        tool_calls=ctx.tool_calls_log)
+            if saved:
+                log(f"   📊 [proofread] _校对数据.json 已保存")
+            else:
+                log(f"   ⚠️ [proofread] 校对数据解析为空，未生成 JSON")
+        except Exception as e:
+            log(f"   ⚠️ [proofread] _校对数据.json 保存失败: {e}")
+
+        # 同步存档到 output/中间产物（仅 generate_pdf 模式）
+        if generate_pdf:
             try:
                 from pathlib import Path as _Path
                 import shutil

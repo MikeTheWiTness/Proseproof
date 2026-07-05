@@ -11,6 +11,7 @@ import re
 import sys
 
 from proseproof.shared.review_mode import extract_comments_from_md
+from proseproof.core.defaults import _fix_escaped_brackets
 
 _counter = itertools.count(1)
 
@@ -58,17 +59,6 @@ def _escape_text(text: str) -> str:
     for char, replacement in _LATEX_SPECIAL:
         text = text.replace(char, replacement)
     return text
-
-
-def _fix_escaped_brackets(text: str) -> str:
-    r"""将非数学内容的 \[...\] 还原为 [...]（Pandoc 转义残留）。
-    若方括号内包含数学符号（$、\\、^、_），则保留为显示数学模式。"""
-    def _repl(m):
-        inner = m.group(1)
-        if re.search(r'[\$\\\^_]', inner):
-            return m.group(0)  # 数学内容，保留 \[...\]
-        return '[' + inner + ']'  # 纯文本，还原方括号
-    return re.sub(r'\\\[([^\]]*?)\\\]', _repl, text)
 
 
 def _escape_unescaped(text: str, chars: str) -> str:
@@ -535,14 +525,7 @@ def _circled_char(n: int) -> str:
 
 _INLINE_MARKER_RE = re.compile(r'【([\d①-⑳]+)\|([^|]*?)\|([^】]*?)】')
 
-
-def _parse_marker_num(s: str) -> int:
-    """'①' → 1, '1' → 1 —— 委托给 parsing.py 的统一实现。"""
-    from proseproof.core.parsing import _circle_to_int
-    n = _circle_to_int(s[0])
-    if n is not None:
-        return n
-    return int(s)
+from proseproof.core.parsing import _parse_marker_num  # noqa: E402 (有意放在 _INLINE_MARKER_RE 之后)
 
 
 def _process_inline_markers(md_text: str, corrections: list[dict],
