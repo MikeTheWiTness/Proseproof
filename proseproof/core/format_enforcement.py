@@ -71,13 +71,20 @@ def _bash_format_fix(file_path: str, issues_desc: str,
     Returns:
         修正后的文件内容（str），失败时返回 None
     """
+    from proseproof.shared.file_tools import ReadTool, WriteTool, EditTool
     from proseproof.shared.bash_tool import BashTool, FileReadTool, FileWriteTool
     from proseproof.core.api_client import call_api
 
     file_dir = os.path.dirname(os.path.abspath(file_path))
     file_name = os.path.basename(file_path)
 
-    system_prompt = """你是一个格式修正助手。用户会告诉你一个文件的格式问题，你需要直接编辑该文件，使其符合规范格式。
+    system_prompt = """你是一个格式修正助手。用户会告诉你一个文件的格式问题，你需要用工具直接编辑该文件。
+
+## 可用工具
+
+- **read_file**: 读取文件内容（支持 offset/limit）
+- **edit_file**: 精确替换文件中的字符串（old_string 必须与文件完全相同）
+- **write_file**: 覆写整个文件（仅作为 edit_file 多次失败后的兜底）
 
 ## 规范格式要求
 
@@ -109,12 +116,13 @@ def _bash_format_fix(file_path: str, issues_desc: str,
         "保留所有校对结论，只调整格式结构。"
     )
 
-    read_tool = FileReadTool()
-    write_tool = FileWriteTool()
+    read_tool = ReadTool()
+    write_tool = WriteTool()
+    edit_tool = EditTool()
     bash_tool = BashTool(allowed_dir=file_dir)
 
     try:
-        log(f"   🔧 [bash修正] 启动 LLM 直接编辑文件...")
+        log(f"   🔧 [edit修正] 启动 LLM 直接编辑文件...")
         result = call_api(
             api_url=api_url,
             api_key=api_key,
@@ -123,9 +131,9 @@ def _bash_format_fix(file_path: str, issues_desc: str,
             images=[],
             q_title="格式修正",
             system_prompt=system_prompt,
-            tools=[read_tool, write_tool, bash_tool],
-            max_loops=3,          # 格式修正只需 read→write→read 三轮
-            max_tokens=16384,      # 格式修正不需要太长输出
+            tools=[read_tool, edit_tool, write_tool, bash_tool],
+            max_loops=3,
+            max_tokens=16384,
             output_dir=file_dir,
         )
     except Exception as e:

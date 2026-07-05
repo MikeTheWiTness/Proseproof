@@ -20,6 +20,7 @@ from proseproof.core.defaults import (
 from proseproof.core.manual_split import split_by_manual_markers
 from proseproof.core.logging_utils import log
 from proseproof.core.middleware import MiddlewareAction
+from proseproof.core.strategy import ProofreadStrategy
 from proseproof.shared.image_utils import copy_md_images
 
 
@@ -197,6 +198,19 @@ class BaseProfile:
                     "tool_calls": ctx.tool_calls_log}
         return {"success": True, "result": ctx.raw_response,
                 "tool_calls": ctx.tool_calls_log, "error": None}
+
+    def get_proofread_strategy(self, api_url: str = "", api_key: str = "",
+                                model: str = "", react_mode: bool = False):
+        """获取当前的校对策略实例（实现 ProofreadStrategy 协议）。
+
+        v0.2.0 默认返回 DefaultProofreadStrategy。
+        子类可覆盖此方法以提供自定义策略。
+        """
+        from proseproof.core.proofread_middleware import DefaultProofreadStrategy
+        return DefaultProofreadStrategy(
+            api_url=api_url, api_key=api_key, model=model,
+            react_mode=react_mode,
+        )
 
     def _build_pre_hook(self, api_url: str, api_key: str, model: str,
                          q_dir: str):
