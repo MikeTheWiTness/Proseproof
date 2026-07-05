@@ -1,6 +1,7 @@
 import os, re, base64, shutil
 from pathlib import Path
 from proseproof.core.parsing import save_proofread_json, _is_no_issue
+from proseproof.shared.report_utils import format_tool_calls_summary, format_usage_summary
 from proseproof.core.api_client import call_api, MAX_FILE_SIZE
 from proseproof.core.logging_utils import log
 from proseproof.core.format_enforcement import _enforce_format, enforce_and_fix
@@ -520,45 +521,6 @@ def default_split_document(md_file, output_root, base_name, config):
     return True
 
 
-def _format_tool_calls_summary(tool_calls: list) -> str:
-    """生成工具调用摘要，追加到校对报告末尾。"""
-    if not tool_calls:
-        return ""
-    lines = [
-        "\n\n---\n",
-        "## 📋 工具调用日志\n\n",
-        f"共调用 {len(tool_calls)} 次\n\n",
-    ]
-    for i, tc in enumerate(tool_calls, 1):
-        tool = tc.get("tool", "?")
-        args = tc.get("args", {})
-        result = tc.get("result", "")
-        # 截取参数中可读的 query/url
-        arg_summary = args.get("query", "") or args.get("url", "") or str(args)[:80]
-        result_preview = result[:500].replace("\n", " ").strip()
-        lines.append(f"**{i}. {tool}** — `{arg_summary[:100]}`\n\n")
-        lines.append(f"> {result_preview}\n\n")
-    return "".join(lines)
-
-
-def _format_usage_summary(usage: dict) -> str:
-    """格式化 token 用量统计。"""
-    if not usage:
-        return ""
-    prompt = usage.get("prompt_tokens", 0)
-    completion = usage.get("completion_tokens", 0)
-    total = usage.get("total_tokens", 0)
-    if total == 0:
-        return ""
-    lines = ["\n\n---\n", "## 📊 Token 用量统计\n\n"]
-    lines.append(f"| 类型 | Token 数 |\n")
-    lines.append(f"|------|----------|\n")
-    lines.append(f"| 提示词 (prompt) | {prompt:,} |\n")
-    lines.append(f"| 生成 (completion) | {completion:,} |\n")
-    lines.append(f"| **总计** | **{total:,}** |\n")
-    return "".join(lines)
-
-
 def default_proofread_one(api_url, api_key, model, q_dir, q_name, is_segment, prompt, tools, max_loops, generate_pdf, pre_hook=None, react_mode=False):
     target_md = os.path.join(q_dir, f"{q_name}.md")
     md_content = ""
@@ -664,14 +626,14 @@ def default_proofread_one(api_url, api_key, model, q_dir, q_name, is_segment, pr
                     f.write(res)
                     # 追加工具调用摘要，方便排查搜索质量
                     if tool_calls:
-                        f.write(_format_tool_calls_summary(tool_calls))
+                        f.write(format_tool_calls_summary(tool_calls))
                     # "无问题" 时追加模型思考内容，方便后期核查
                     if _is_no_issue(res) and reasoning:
                         f.write("\n\n---\n")
                         f.write("## 📋 模型思考过程（仅核查用，不出现在 PDF 中）\n\n")
                         f.write(reasoning)
                     # 追加 token 用量统计
-                    usage_text = _format_usage_summary(usage)
+                    usage_text = format_usage_summary(usage)
                     if usage_text:
                         f.write(usage_text)
             except Exception:
@@ -690,12 +652,12 @@ def default_proofread_one(api_url, api_key, model, q_dir, q_name, is_segment, pr
                     f.write(f"> 完整 API 对话记录请见 `_API对话记录.md`\n\n---\n\n")
                     f.write(res)
                     if tool_calls:
-                        f.write(_format_tool_calls_summary(tool_calls))
+                        f.write(format_tool_calls_summary(tool_calls))
                     if _is_no_issue(res) and reasoning:
                         f.write("\n\n---\n")
                         f.write("## 📋 模型思考过程（仅核查用，不出现在 PDF 中）\n\n")
                         f.write(reasoning)
-                    usage_text = _format_usage_summary(usage)
+                    usage_text = format_usage_summary(usage)
                     if usage_text:
                         f.write(usage_text)
                 # 同步存档结构化数据

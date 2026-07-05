@@ -39,6 +39,20 @@ def _split_by_regex(content: str, pattern) -> list:
     return fragments if fragments else [{"content": content}]
 
 
+def _save_outline_if_needed(content: str, output_root: str,
+                            base_name: str, config: dict):
+    """在 split 阶段保存 _outline.json 中间产物。"""
+    try:
+        from proseproof.shared.outline_extractor import extract_outline, save_outline_json
+        max_depth = config.get("split", {}).get("outline", {}).get("max_depth", 4)
+        outline = extract_outline(content, max_depth=max_depth)
+        if outline:
+            target = Path(output_root) / base_name
+            save_outline_json(content, target, max_depth=max_depth)
+    except Exception as e:
+        log(f"   ⚠️ 大纲保存失败: {e}")
+
+
 class BaseProfile:
     """配置方案基类。
 
@@ -264,6 +278,7 @@ class BaseProfile:
             from proseproof.shared.heading_split import HeadingSplitStrategy
             strategy = HeadingSplitStrategy()
             fragments = strategy.split(md_content, self.config)
+            _save_outline_if_needed(md_content, output_root, base_name, self.config)
         elif split_mode == "smart":
             api_url = options.get("api_url", "")
             api_key = options.get("api_key", "")
@@ -281,6 +296,7 @@ class BaseProfile:
 
             strategy = SmartSplitStrategy(llm_callable=_llm_call)
             fragments = strategy.split(md_content, self.config)
+            _save_outline_if_needed(md_content, output_root, base_name, self.config)
         elif split_mode == "deep":
             from proseproof.shared.smart_split import DeepSplitStrategy
             api_url = options.get("api_url", "")

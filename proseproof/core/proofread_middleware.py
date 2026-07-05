@@ -72,37 +72,7 @@ def _import_builtin(module_name: str, class_name: str):
     raise ImportError(f"未知内置中间件模块: {module_name}")
 
 
-def _format_tool_calls_summary(tool_calls: list) -> str:
-    """生成工具调用摘要（简化版）。"""
-    if not tool_calls:
-        return ""
-    lines = ["\n\n---\n", f"\n## 📋 工具调用日志\n\n共调用 {len(tool_calls)} 次\n\n"]
-    for i, tc in enumerate(tool_calls, 1):
-        tool = tc.get("tool", "?")
-        args = tc.get("args", {})
-        result = tc.get("result", "")
-        arg_summary = args.get("query", "") or args.get("url", "") or str(args)[:80]
-        result_preview = result[:500].replace("\n", " ").strip()
-        lines.append(f"**{i}. {tool}** — `{arg_summary[:100]}`\n\n")
-        lines.append(f"> {result_preview}\n\n")
-    return "".join(lines)
-
-
-def _format_usage_summary(usage: dict) -> str:
-    """格式化 token 用量统计。"""
-    if not usage:
-        return ""
-    prompt = usage.get("prompt_tokens", 0)
-    completion = usage.get("completion_tokens", 0)
-    total = usage.get("total_tokens", 0)
-    if total == 0:
-        return ""
-    lines = ["\n\n---\n", "## 📊 Token 用量统计\n\n"]
-    lines.append("| 类型 | Token 数 |\n|------|----------|\n")
-    lines.append(f"| 提示词 (prompt) | {prompt:,} |\n")
-    lines.append(f"| 生成 (completion) | {completion:,} |\n")
-    lines.append(f"| **总计** | **{total:,}** |\n")
-    return "".join(lines)
+from proseproof.shared.report_utils import format_tool_calls_summary, format_usage_summary
 
 
 def proofread_with_middleware(
@@ -250,12 +220,12 @@ def proofread_with_middleware(
                     f.write("> 完整 API 对话记录请见 `_API对话记录.md`\n\n---\n\n")
                     f.write(ctx.raw_response)
                     if ctx.tool_calls_log:
-                        f.write(_format_tool_calls_summary(ctx.tool_calls_log))
+                        f.write(format_tool_calls_summary(ctx.tool_calls_log))
                     if _is_no_issue(ctx.raw_response) and ctx.reasoning:
                         f.write("\n\n---\n")
                         f.write("## 📋 模型思考过程（仅核查用，不出现在 PDF 中）\n\n")
                         f.write(ctx.reasoning)
-                    usage_text = _format_usage_summary(ctx.usage)
+                    usage_text = format_usage_summary(ctx.usage)
                     if usage_text:
                         f.write(usage_text)
             except Exception as e:

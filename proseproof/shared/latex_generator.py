@@ -537,10 +537,11 @@ _INLINE_MARKER_RE = re.compile(r'【([\d①-⑳]+)\|([^|]*?)\|([^】]*?)】')
 
 
 def _parse_marker_num(s: str) -> int:
-    """'①' → 1, '1' → 1"""
-    code = ord(s[0])
-    if 0x2460 <= code <= 0x2473:
-        return code - 0x2460 + 1
+    """'①' → 1, '1' → 1 —— 委托给 parsing.py 的统一实现。"""
+    from proseproof.core.parsing import _circle_to_int
+    n = _circle_to_int(s[0])
+    if n is not None:
+        return n
     return int(s)
 
 
