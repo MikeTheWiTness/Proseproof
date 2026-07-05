@@ -63,6 +63,10 @@ def load_config(profile_dir):
     for section in ("split", "proofread", "review"):
         config[section] = new_data.get(section, {})
 
+    # review_prompt_lines（可选，批注评审专用提示词）
+    if "review_prompt_lines" in new_data:
+        config["review_prompt_lines"] = new_data["review_prompt_lines"]
+
     _config_cache[cache_key] = config
     return config
 
