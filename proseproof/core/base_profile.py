@@ -358,5 +358,25 @@ class BaseProfile:
             except Exception:
                 pass
 
+        # skip_sections: 按配置丢弃匹配的板块
+        skip_patterns = self.config.get("lecture_split", {}).get("skip_sections", [])
+        if skip_patterns and target_root.exists():
+            import shutil
+            for sub_dir in sorted(target_root.iterdir()):
+                if not sub_dir.is_dir():
+                    continue
+                md_files = list(sub_dir.glob("*.md"))
+                if not md_files:
+                    continue
+                try:
+                    first_line = md_files[0].read_text(encoding="utf-8").split("\n")[0].strip()
+                except Exception:
+                    continue
+                for pat in skip_patterns:
+                    if re.search(pat, first_line):
+                        shutil.rmtree(sub_dir)
+                        log(f"   🗑️ 跳过板块: {sub_dir.name}（匹配 {pat}）")
+                        break
+
         log(f"[OK] 拆分完成: {len(fragments)} 个片段")
         return True

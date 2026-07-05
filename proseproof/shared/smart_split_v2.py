@@ -120,7 +120,8 @@ class SmartSplitStrategy:
 
         # Step 1: 提取大纲
         max_depth = config.get("split", {}).get("outline", {}).get("max_depth", 4)
-        outline = extract_outline(content, max_depth=max_depth)
+        extra_signals = config.get("split", {}).get("outline", {}).get("extra_signals", [])
+        outline = extract_outline(content, max_depth=max_depth, extra_patterns=extra_signals)
         if not outline:
             # 无结构 → 降级
             log("   ⚠️ smart 分割未检测到文档结构，降级为 heading 切分")

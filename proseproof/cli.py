@@ -52,9 +52,29 @@ def _resolve_profile(profile_name: str):
     return None
 
 
+def _strip_images_from_md(md_path: str, mode: str | None,
+                           size_threshold: int | None = None):
+    """剥离 Markdown 中的图片引用。"""
+    import re
+    with open(md_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    if mode == 'all':
+        content = re.sub(r'!\[.*?\]\(.*?\)(\s*\{[^}]*\})?', '', content)
+    elif mode == 'small' or size_threshold:
+        threshold = size_threshold if size_threshold else 5 * 1024
+        img_dir = os.path.dirname(md_path)
+        def _filter_by_size(m):
+            path = m.group(1)
+            full_path = os.path.join(img_dir, path) if not os.path.isabs(path) else path
+            if os.path.isfile(full_path) and os.path.getsize(full_path) < threshold:
+                return ''
+            return m.group(0)
+        content = re.sub(r'!\[.*?\]\((.*?)\)(\s*\{[^}]*\})?', _filter_by_size, content)
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+
 def _load_profile(profile_dir: str):
-    """加载配置方案：优先 profile.py，其次 config.json。"""
-    profile_py = os.path.join(profile_dir, 'profile.py')
     config_json = os.path.join(profile_dir, 'config.json')
 
     if not os.path.isfile(config_json):
@@ -105,7 +125,13 @@ def main():
               help='输出 Markdown 文件路径（默认与输入同目录同名 .md）')
 @click.option('--mathjax/--no-mathjax', default=False,
               help='使用 MathJax 公式格式')
-def convert(input_file, output, mathjax):
+@click.option('--strip-images', 'strip_mode', flag_value='all',
+              help='剥离所有图片引用')
+@click.option('--strip-small-images', 'strip_mode', flag_value='small',
+              help='自动过滤 <5KB 的装饰性小图')
+@click.option('--strip-images-below', type=int, default=None,
+              help='过滤小于指定字节的图片')
+def convert(input_file, output, mathjax, strip_mode, strip_images_below):
     """将 Word/IDML 文档转为 Markdown。"""
     from proseproof.core.defaults import default_convert_file_to_md
     from proseproof.core.logging_utils import log, set_log_func
@@ -122,6 +148,9 @@ def convert(input_file, output, mathjax):
     result = default_convert_file_to_md(input_file, output, img_dir,
                                          use_mathjax=mathjax)
     if result:
+        # 图像清洗（如果指定了 --strip-* 选项）
+        if strip_mode or strip_images_below:
+            _strip_images_from_md(output, strip_mode, strip_images_below)
         click.echo(f"[OK] {output}")
     else:
         raise click.ClickException("转换失败")
@@ -427,7 +456,8 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
                 md_content = f.read()
             from proseproof.shared.outline_extractor import extract_outline, outline_to_dict
             max_depth = app.config.get("split", {}).get("outline", {}).get("max_depth", 4)
-            outline = extract_outline(md_content, max_depth=max_depth)
+            extra_signals = app.config.get("split", {}).get("outline", {}).get("extra_signals", [])
+            outline = extract_outline(md_content, max_depth=max_depth, extra_patterns=extra_signals)
             if outline:
                 # 落盘 _outline.json 中间产物
                 from proseproof.shared.outline_extractor import save_outline_json
@@ -517,7 +547,8 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
             with open(md_file, 'r', encoding='utf-8') as f:
                 md_content = f.read()
             from proseproof.shared.outline_extractor import extract_outline, outline_to_dict
-            outline = outline_to_dict(extract_outline(md_content))
+            extra_signals = app.config.get("split", {}).get("outline", {}).get("extra_signals", [])
+            outline = outline_to_dict(extract_outline(md_content, extra_patterns=extra_signals))
 
             def _llm_review(prompt_text, system_prompt):
                 from proseproof.core.api_client import call_api
