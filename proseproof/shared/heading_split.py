@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 import re
-from proseproof.shared.outline_extractor import extract_outline
 
 
 # 标题匹配模式

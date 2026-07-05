@@ -20,7 +20,11 @@ def load_config(profile_dir):
         raise FileNotFoundError(f"配置文件不存在: {config_file}")
 
     with open(config_file, 'r', encoding='utf-8') as f:
-        new_data = json.load(f)
+        try:
+            new_data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"配置文件 JSON 格式错误: {config_file}\n{e}")
 
     if "question_prompt_lines" not in new_data:
         raise ValueError(f"配置文件缺少 question_prompt_lines: {config_file}")

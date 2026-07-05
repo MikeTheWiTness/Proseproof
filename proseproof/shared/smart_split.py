@@ -13,7 +13,7 @@ from proseproof.core.logging_utils import log
 from proseproof.core.api_client import call_api
 
 
-SMART_SPLIT_PROMPT = """你是专业的文档结构分析专家。请在给定的文档原文中，用 <problem></problem> 标签标记每个完整的片段单元。
+DEEP_SPLIT_PROMPT = """你是专业的文档结构分析专家。请在给定的文档原文中，用 <problem></problem> 标签标记每个完整的片段单元。
 
 规则：
 1. **绝对不修改原文任何一个字**，只在片段边界插入标签
@@ -72,7 +72,7 @@ def _dump_smart_split_raw(raw_text, md_file, label=""):
 def smart_split_with_callable(md_content, llm_callable, md_file=None):
     for attempt in range(2):
         try:
-            result_text = llm_callable(md_content, SMART_SPLIT_PROMPT)
+            result_text = llm_callable(md_content, DEEP_SPLIT_PROMPT)
         except Exception as e:
             log(f"   ⚠️ 智能分割第 {attempt+1} 次调用失败: {e}")
             continue

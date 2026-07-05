@@ -27,6 +27,12 @@ def _resolve_profile(profile_name: str):
     2. 包内置 profiles/<name>/
     3. 绝对路径
     """
+    # 安全检查：拒绝路径穿越
+    if '..' in profile_name or os.path.isabs(profile_name):
+        # 允许绝对路径（if it exists），但拒绝相对穿越
+        if '..' in profile_name:
+            raise click.ClickException(f"非法的配置方案名: {profile_name}")
+
     # 绝对路径
     if os.path.isabs(profile_name) and os.path.isdir(profile_name):
         return profile_name
@@ -56,10 +62,14 @@ def _load_profile(profile_dir: str):
 
     if os.path.isfile(profile_py):
         import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            'user_profile', profile_py)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                'user_profile', profile_py)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception as e:
+            raise click.ClickException(
+                f"profile.py 加载失败: {e}")
         # 查找 BaseProfile 子类
         from proseproof.core.base_profile import BaseProfile
         for attr in dir(mod):
