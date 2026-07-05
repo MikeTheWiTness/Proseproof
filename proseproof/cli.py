@@ -475,7 +475,8 @@ def run(input_file, output_dir, profile, api_url, api_key, model,
         try:
             result = app.proofread_one(
                 api_url, api_key, model, frag_dir, frag_name,
-                generate_pdf=False, source_mode="文档")
+                generate_pdf=False, source_mode="文档",
+                middleware=middleware)
             if result.get("success"):
                 success += 1
                 if resume and manifest:

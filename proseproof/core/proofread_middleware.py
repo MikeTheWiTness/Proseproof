@@ -52,6 +52,15 @@ def _resolve_middleware_chain(config: dict) -> list:
     return chain
 
 
+def _resolve_middleware_chain_from_names(names: list) -> list:
+    """根据名称列表构建中间件实例（用于 CLI --middleware override）。"""
+    return _resolve_middleware_chain(
+        {"proofread": {"middleware_chain": [
+            {"name": n.strip(), "enabled": True} for n in names if n.strip()
+        ]}}
+    )
+
+
 def _import_builtin(module_name: str, class_name: str):
     """动态加载内置中间件。"""
     if module_name == "pre_check":
@@ -101,6 +110,7 @@ def proofread_with_middleware(
     api_url: str, api_key: str, model: str,
     output_dir: str, generate_pdf: bool = True,
     react_mode: bool = False,
+    middleware_override: str | None = None,
 ) -> MiddlewareResult:
     """中间件链驱动的校对包装函数。
 
@@ -123,8 +133,11 @@ def proofread_with_middleware(
     Returns:
         MiddlewareResult，含最终 context 和 action。
     """
-    # Step 1: 构建中间件链
-    chain = _resolve_middleware_chain(ctx.config)
+    # Step 1: 构建中间件链（CLI override > config）
+    if middleware_override:
+        chain = _resolve_middleware_chain_from_names(middleware_override.split(","))
+    else:
+        chain = _resolve_middleware_chain(ctx.config)
 
     # Step 2: pre 中间件
     try:

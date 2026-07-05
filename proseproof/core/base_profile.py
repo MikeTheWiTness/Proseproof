@@ -104,7 +104,13 @@ class BaseProfile:
         return self.get_proofread_prompt()
 
     def get_review_prompt(self) -> str:
-        """获取批注评审提示词。默认回退到校对提示词。"""
+        """获取批注评审提示词。优先从 config.json 的 review_prompt_lines 读取，
+        无则回退到 question_prompt_lines。"""
+        review_lines = self.config.get("review_prompt_lines")
+        if review_lines:
+            if isinstance(review_lines, list):
+                return "\n".join(review_lines)
+            return review_lines
         return self.get_proofread_prompt()
 
     # ---- 校对主流程（模板方法） ----
@@ -113,11 +119,13 @@ class BaseProfile:
                        q_dir: str, q_name: str,
                        is_segment: bool = False,
                        generate_pdf: bool = True,
-                       source_mode: str = "文档") -> dict:
+                       source_mode: str = "文档",
+                       middleware: str | None = None) -> dict:
         """校对单个片段 —— 通过中间件链驱动。
 
-        子类可覆盖 _build_pre_hook() 注入前置处理逻辑。
-        返回 dict（向后兼容 default_proofread_one 的调用方）。
+        Args:
+            middleware: 可选，逗号分隔的中间件名列表，覆盖 config.json。
+                        None 时从 config 读取默认值。
         """
         if is_segment:
             prompt = self.get_segment_prompt()
@@ -163,6 +171,7 @@ class BaseProfile:
             output_dir=q_dir,
             generate_pdf=generate_pdf,
             react_mode=self.react_mode,
+            middleware_override=middleware,
         )
 
         # 转换为向后兼容的 dict 格式
