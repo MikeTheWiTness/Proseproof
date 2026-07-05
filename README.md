@@ -13,7 +13,9 @@ Word/文本 → 拆分 → AI校对 → 格式审查 → 结构化解析 → LaT
 ```bash
 proseproof run manuscript.docx -o ./output          # 一键全流程
 proseproof convert manuscript.docx -o manuscript.md  # 仅转换
+proseproof convert paper.docx --strip-small-images     # 自动过滤装饰图
 proseproof split manuscript.md -o ./fragments        # 仅拆分
+proseproof split manuscript.md --mode smart --split-by-pattern "^Chapter" # 自定义正则
 proseproof proofread ./fragments -p academic          # 仅校对
 proseproof typeset ./fragments -o output.pdf          # 仅排版
 proseproof compile output.tex -o output.pdf           # 仅编译
@@ -23,10 +25,12 @@ proseproof compile output.tex -o output.pdf           # 仅编译
 
 - **可组合管线**：5 个阶段独立可调用，灵活编排
 - **AI 校对**：接入任意 OpenAI 兼容 API，支持 ReAct 工具循环模式
-- **智能拆分**：规则/LLM/手动三种拆分模式
+- **智能拆分**：heading/smart/deep/manual/rule/none/pattern 七种模式
+- **中间件链**：PreCheck（异常预检）+ Similarity（结构校验），可扩展
 - **结构化输出**：内联标记 + JSON 数据，机器可消费
+- **断点续传**：`--resume` 跳过已完成片段，Manifest 状态追踪
+- **内容审查**：Light（大纲+摘要）/ Full（大纲+全文）两级
 - **LaTeX 排版**：paracol 双栏对照排版（原文 | 修改意见）
-- **配置方案**：JSON 驱动，Python 可扩展
 
 ## 安装
 
@@ -57,6 +61,15 @@ proseproof convert article.docx -o article.md
 proseproof split article.md --mode smart -o ./fragments
 proseproof proofread ./fragments/article -p generic --react
 proseproof typeset ./fragments/article -o ./output/article.pdf
+
+# 断点续传 + 自动审查
+proseproof run article.md --resume --review light
+
+# 自定义分割边界
+proseproof run article.md --split-by-pattern "^第[一二三四五六七八九十]+章"
+
+# 转换时清洗装饰图片
+proseproof convert article.docx -o article.md --strip-small-images
 ```
 
 ### 3. 自定义配置方案
@@ -80,7 +93,18 @@ vim profiles/my-style/config.json
     "## 校对原则",
     "1. **字词校对**...",
     "2. **语句校对**..."
-  ]
+  ],
+  "split": {
+    "mode": "smart",
+    "outline": { "max_depth": 4, "extra_signals": [] }
+  },
+  "proofread": {
+    "middleware_chain": [
+      {"name": "pre_check", "enabled": true},
+      {"name": "similarity", "enabled": true}
+    ]
+  },
+  "review": { "content": {"mode": "light"} }
 }
 ```
 
